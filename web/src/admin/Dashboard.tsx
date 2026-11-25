@@ -19,8 +19,8 @@ function Bars({ data, label }: { data: { k: string; a: number; b?: number }[]; l
         {data.map((d, i) => (
           <g key={d.k}>
             <title>{`${d.k}: ${d.a}${d.b !== undefined ? ' / ' + d.b : ''}`}</title>
-            <rect x={i * 24 + 2} y={100 - (d.a / max) * 96} width={d.b !== undefined ? 9 : 18} height={(d.a / max) * 96} fill="#9B5033" rx="1.5" />
-            {d.b !== undefined && <rect x={i * 24 + 12} y={100 - (d.b / max) * 96} width="9" height={(d.b / max) * 96} fill="#CC8463" rx="1.5" />}
+            <rect x={i * 24 + 2} y={100 - (d.a / max) * 96} width={d.b !== undefined ? 9 : 18} height={(d.a / max) * 96} fill="#A85A36" rx="1.5" />
+            {d.b !== undefined && <rect x={i * 24 + 12} y={100 - (d.b / max) * 96} width="9" height={(d.b / max) * 96} fill="#D58F6B" rx="1.5" />}
           </g>
         ))}
       </svg>

@@ -3,7 +3,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { verify } from '../_shared/sign.ts'
 
-const page = (body: string, status = 200) => new Response(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:Outfit,Helvetica,Arial,sans-serif;background:#F9F2E3;color:#312122;max-width:480px;margin:40px auto;padding:0 16px">${body}</body>`, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+const page = (body: string, status = 200) => new Response(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:Outfit,Helvetica,Arial,sans-serif;background:#FAF3E6;color:#382525;max-width:480px;margin:40px auto;padding:0 16px">${body}</body>`, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 
 Deno.serve(async (req) => {
@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return page(`<h1>Take down this poster?</h1><p><strong>${esc(poster.title)}</strong> (currently ${esc(poster.status)})</p>
 <form method="post"><input type="hidden" name="id" value="${id}"><input type="hidden" name="t" value="${esc(t)}">
-<button style="background:#8a2b1d;color:#F9F2E3;border:0;padding:14px 22px;border-radius:10px;font:600 16px Outfit,sans-serif">Yes, take it down</button></form>`)
+<button style="background:#8a2b1d;color:#FAF3E6;border:0;padding:14px 22px;border-radius:10px;font:600 16px Outfit,sans-serif">Yes, take it down</button></form>`)
   }
   if (poster.status === 'live' || poster.status === 'waiting') {
     await sb.from('posters').update({ status: 'taken_down', taken_down_reason: 'Taken down by admin (email link)' }).eq('id', id)

@@ -4,8 +4,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        cream: '#F9F2E3', brown: '#312122', terracotta: '#CC8463', rust: '#9B5033', peach: '#E3BBA3',
-        frame: '#312122',
+        cream: '#FAF3E6', 'cream-dark': '#F2E7D3', brown: '#382525', terracotta: '#D58F6B', rust: '#A85A36', peach: '#E3BB9F',
+        frame: '#382525',
       },
       fontFamily: { sans: ['Outfit', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
       screens: { xs: '390px' },

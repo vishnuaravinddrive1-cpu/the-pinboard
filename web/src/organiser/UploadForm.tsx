@@ -117,7 +117,7 @@ export default function UploadForm({ onDone, onCancel }: { onDone: () => void; o
       </div>
 
       <label className="card p-4 flex items-start gap-3 cursor-pointer min-h-[44px]">
-        <input type="checkbox" className="mt-1 w-6 h-6 accent-[#9B5033] shrink-0" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} data-testid="confirm" />
+        <input type="checkbox" className="mt-1 w-6 h-6 accent-[#A85A36] shrink-0" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} data-testid="confirm" />
         <span>This event is in or around Chennai and fits one of the categories above, and I have read the <Link to="/terms" target="_blank">Terms</Link>.</span>
       </label>
 

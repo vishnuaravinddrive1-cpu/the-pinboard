@@ -11,7 +11,7 @@ export const config = {
     address: '66, Baroda Street, West Mambalam, Chennai',
     contact: 'thecuriosityquotient@gmail.com',
   },
-  termsVersion: '2026-11-01',
+  termsVersion: '0.1',
   boardLimit: 100,
   timezone: 'Asia/Kolkata',
   supabaseUrl: (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? '',

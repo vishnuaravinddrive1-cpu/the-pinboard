@@ -7,7 +7,7 @@
 @tailwind utilities;
 
 :root {
-  --cream: #F9F2E3; --brown: #312122; --terracotta: #CC8463; --rust: #9B5033; --peach: #E3BBA3;
+  --cream: #FAF3E6; --brown: #382525; --terracotta: #D58F6B; --rust: #A85A36; --peach: #E3BB9F;
   --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); --sal: env(safe-area-inset-left); --sar: env(safe-area-inset-right);
 }
 
@@ -25,8 +25,8 @@
 
 @layer components {
   .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 font-semibold min-h-[44px] min-w-[44px] transition-transform active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed select-none; }
-  .btn-primary { @apply btn bg-rust text-cream hover:bg-[#843f26]; }
-  .btn-secondary { @apply btn bg-peach text-brown hover:bg-[#d9ab8f]; }
+  .btn-primary { @apply btn bg-rust text-cream hover:bg-[#8F4A2A]; }
+  .btn-secondary { @apply btn bg-peach text-brown hover:bg-[#D6AA8C]; }
   .btn-ghost { @apply btn bg-transparent text-brown border-2 border-brown/30 hover:bg-brown/5; }
   .btn-danger { @apply btn bg-[#8a2b1d] text-cream hover:bg-[#6f2217]; }
   .field { @apply w-full rounded-xl border-2 border-brown/25 bg-white px-3 min-h-[48px] text-brown placeholder:text-brown/50 focus:border-rust; }
@@ -47,8 +47,8 @@
   background-size: 240px 240px, 360px 360px, auto, auto;
 }
 .board-frame { pointer-events: none; position: fixed; inset: 0; z-index: 40;
-  box-shadow: inset 0 0 0 10px #312122, inset 0 0 0 12px #5a3a2e, inset 0 0 90px 30px rgba(0,0,0,.55); }
-@media (max-width: 640px) { .board-frame { box-shadow: inset 0 0 0 6px #312122, inset 0 0 0 7px #5a3a2e, inset 0 0 50px 14px rgba(0,0,0,.5); } }
+  box-shadow: inset 0 0 0 10px #382525, inset 0 0 0 12px #5A3E3E, inset 0 0 90px 30px rgba(0,0,0,.55); }
+@media (max-width: 640px) { .board-frame { box-shadow: inset 0 0 0 6px #382525, inset 0 0 0 7px #5A3E3E, inset 0 0 50px 14px rgba(0,0,0,.5); } }
 
 /* ---------- Posters ---------- */
 .poster { position: absolute; will-change: transform; transition: transform .22s ease, box-shadow .22s ease; outline-offset: 6px; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }

@@ -28,6 +28,25 @@ Demo logins (any password): `organiser@demo.test`, `newbie@demo.test` (pending),
 
 ---
 
+## Fastest way to get it on the web (all free, mostly automatic)
+
+You only create accounts and paste secrets; GitHub then does the rest. (Nobody but you can log in to these accounts, so this part cannot be done for you.)
+
+**A. Website, demo mode (2 minutes, no backend yet)**
+- *Cloudflare Pages (recommended):* Cloudflare dashboard → Workers & Pages → Create → Pages → Connect to Git → this repo. Root directory `web`, build command `npm run build`, output `dist`, production branch = your default branch. Leave the `VITE_` variables empty: the site runs in demo mode.
+- *or Render:* render.com → New → Blueprint → this repo (uses `render.yaml`). Render's static-site fields (`rootDir`, `routes`) are written from memory and were not verified against its docs; if the Blueprint complains, create a Static Site by hand with the same root/build/publish settings and add a rewrite `/*` → `/index.html`.
+- *or fully from GitHub:* add repository secrets `CLOUDFLARE_API_TOKEN` (template "Edit Cloudflare Pages") and `CLOUDFLARE_ACCOUNT_ID`; the workflow `deploy-cloudflare.yml` builds and deploys on every push.
+
+**B. Real backend (Supabase) from GitHub, no terminal**
+1. Create the Supabase project (supabase.com, free). Enable nothing by hand.
+2. Add the repository secrets listed at the top of `.github/workflows/supabase.yml`.
+3. Actions tab → **Set up Supabase backend** → Run workflow (type your admin email after you have signed up once). It applies the schema, RLS, storage rules and cron jobs, sets the secrets, deploys the three edge functions and registers them with the database. This workflow has not been run against a real project yet.
+4. In Cloudflare/Render add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` and redeploy: the site switches from demo to the real backend.
+
+The detailed manual steps follow if you prefer clicking through each dashboard.
+
+---
+
 # Going live: step by step (no coding needed)
 
 You need free accounts at GitHub, Supabase, Cloudflare and Resend. Do the steps in this order.
@@ -91,7 +110,7 @@ update profiles set role = 'admin', status = 'approved' where email = 'you@examp
 ## 8. Replace the logo / Terms
 - Logo: replace `web/public/tcq-logo.png` (transparent PNG, dark brown). Keep the original in `docs/brand/`. A Q-only favicon can be generated if you send an SVG (icons now use the Q from the logo).
 - Terms: edit `docs/terms.md`. To make everyone re-accept, bump **both** `Version:` in that file, `termsVersion` in `web/src/config.ts` and the Terms version in Admin → Settings. The operator name/address/contact are in `web/src/config.ts` (the Terms use `{{name}}`, `{{org}}`, `{{address}}`, `{{contact}}`).
-- Brand colours: `web/src/theme/theme.ts` and `web/tailwind.config.js` (and `:root` in `web/src/index.css`).
+- Brand colours (now taken from www.tcqindia.com: cream `#FAF3E6`, dark cream `#F2E7D3`, brown `#382525`, orange `#D58F6B`, deep orange `#A85A36`): `web/src/theme/theme.ts` and `web/tailwind.config.js` (and `:root` in `web/src/index.css`).
 
 ## 9. Optional: sample data and testing the 100 cap
 After step 1, run `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node supabase/seed/upload-seed-images.mjs` **on your own computer**, paste `supabase/seed/seed.sql` into the SQL Editor, then `select seed_filler(90);` (110 posters: 100 live, 10 waiting). Clean up with `select seed_remove();`.

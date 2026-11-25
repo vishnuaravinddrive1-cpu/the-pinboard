@@ -3,7 +3,7 @@ export interface Ctx { siteUrl: string; takedownUrl: (posterId: string) => Promi
 export interface Rendered { subject: string; html: string }
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
-const BROWN = '#312122', RUST = '#9B5033', CREAM = '#F9F2E3'
+const BROWN = '#382525', RUST = '#A85A36', CREAM = '#FAF3E6'
 
 function wrap(title: string, body: string): string {
   return `<!doctype html><html><body style="margin:0;background:${CREAM};font-family:Outfit,Segoe UI,Helvetica,Arial,sans-serif;color:${BROWN}">

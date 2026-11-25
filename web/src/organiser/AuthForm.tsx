@@ -47,7 +47,7 @@ export default function AuthForm({ onDone }: { onDone: () => void }) {
           <input id="pw" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} className="field" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
         {mode === 'signup' && (
           <label className="flex items-start gap-3 min-h-[44px] cursor-pointer">
-            <input type="checkbox" className="mt-1 w-6 h-6 accent-[#9B5033] shrink-0" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+            <input type="checkbox" className="mt-1 w-6 h-6 accent-[#A85A36] shrink-0" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
             <span className="text-[15px]">I accept the <Link to="/terms" target="_blank" className="font-semibold">Terms and Conditions</Link> (version {config.termsVersion}).</span>
           </label>
         )}

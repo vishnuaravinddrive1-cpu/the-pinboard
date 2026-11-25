@@ -14,7 +14,7 @@ create table settings (
   board_limit    int  not null default 100 check (board_limit between 1 and 1000),
   reminder_days  int  not null default 1   check (reminder_days between 0 and 30),
   admin_email    text not null default 'thecuriosityquotient@gmail.com',
-  terms_version  text not null default '2026-11-01',
+  terms_version  text not null default '0.1',
   retention_years int not null default 3   check (retention_years between 0 and 20),
   categories     text[] not null default array['Experience','Arts','Knowledge','Discussion','Social','Other'],
   areas          text[] not null default array['Adyar','Alwarpet','Anna Nagar','Besant Nagar','Chromepet','ECR','Egmore','Guindy','Kilpauk','Kodambakkam','Mylapore','Nungambakkam','OMR','Perungudi','Porur','Royapettah','T. Nagar','Tambaram','Thiruvanmiyur','Velachery','West Mambalam','Other']

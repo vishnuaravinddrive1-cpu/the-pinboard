@@ -2,8 +2,8 @@ import { addDays, istToday } from './dates'
 import type { Poster, Profile, PosterStatus } from './types'
 
 const palettes: [string, string, string][] = [
-  ['#F9F2E3', '#312122', '#CC8463'], ['#1f3a5f', '#f4e9cd', '#f2a541'], ['#2d6a4f', '#fefae0', '#ffb703'],
-  ['#9B5033', '#F9F2E3', '#E3BBA3'], ['#5b2a86', '#fff1e6', '#ff9f1c'], ['#0b132b', '#f1faee', '#e63946'],
+  ['#FAF3E6', '#382525', '#D58F6B'], ['#1f3a5f', '#f4e9cd', '#f2a541'], ['#2d6a4f', '#fefae0', '#ffb703'],
+  ['#A85A36', '#FAF3E6', '#E3BB9F'], ['#5b2a86', '#fff1e6', '#ff9f1c'], ['#0b132b', '#f1faee', '#e63946'],
   ['#e9c46a', '#264653', '#e76f51'], ['#264653', '#e9f5db', '#f4a261'], ['#ffe5d9', '#6d213c', '#d1495b'],
   ['#14213d', '#fca311', '#ffffff'],
 ]
@@ -55,9 +55,9 @@ export function seedPosters(): { posters: Poster[]; profiles: Profile[] } {
   const now = new Date().toISOString()
   const profiles: Profile[] = [
     { id: 'u-admin', email: 'admin@demo.test', display_name: 'TCQ Admin', role: 'admin', status: 'approved', terms_version: null, terms_accepted_at: now, created_at: now },
-    { id: 'u-org', email: 'organiser@demo.test', display_name: 'Demo Organiser', role: 'organiser', status: 'approved', terms_version: '2026-11-01', terms_accepted_at: now, created_at: now },
-    { id: 'u-new', email: 'newbie@demo.test', display_name: 'New Organiser', role: 'organiser', status: 'pending', terms_version: '2026-11-01', terms_accepted_at: now, created_at: now },
-    { id: 'u-sus', email: 'suspended@demo.test', display_name: 'Suspended Person', role: 'organiser', status: 'suspended', terms_version: '2026-11-01', terms_accepted_at: now, created_at: now },
+    { id: 'u-org', email: 'organiser@demo.test', display_name: 'Demo Organiser', role: 'organiser', status: 'approved', terms_version: '0.1', terms_accepted_at: now, created_at: now },
+    { id: 'u-new', email: 'newbie@demo.test', display_name: 'New Organiser', role: 'organiser', status: 'pending', terms_version: '0.1', terms_accepted_at: now, created_at: now },
+    { id: 'u-sus', email: 'suspended@demo.test', display_name: 'Suspended Person', role: 'organiser', status: 'suspended', terms_version: '0.1', terms_accepted_at: now, created_at: now },
   ]
   const posters: Poster[] = titles.map(([title, category, area], i) => {
     const [w, h] = sizes[i % sizes.length]

@@ -1,0 +1,49 @@
+name: Deploy website to Cloudflare Pages
+# Free. Needs two repository secrets: CLOUDFLARE_API_TOKEN (permission: Cloudflare Pages - Edit) and CLOUDFLARE_ACCOUNT_ID.
+# Optional repository variables/secrets for a REAL backend: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (public values).
+# Without the Supabase values the site is deployed in DEMO mode (22 sample posters, data kept in each visitor's browser).
+on:
+  push:
+    branches: [main, claude/lucid-lamport-j3x023]
+    paths: ['web/**', 'docs/**', '.github/workflows/deploy-cloudflare.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  deployments: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CF_PROJECT: pinboard
+      HAVE_CF: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cloudflare secrets missing
+        if: env.HAVE_CF != 'true'
+        run: echo "::warning::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as repository secrets to deploy. Skipping."
+      - uses: actions/setup-node@v4
+        if: env.HAVE_CF == 'true'
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - name: Build
+        if: env.HAVE_CF == 'true'
+        working-directory: web
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm ci && npm run build
+      - name: Create the Pages project (first run only)
+        if: env.HAVE_CF == 'true'
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages project create ${{ env.CF_PROJECT }} --production-branch=main
+      - name: Deploy
+        if: env.HAVE_CF == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web/dist --project-name=${{ env.CF_PROJECT }} --branch=main
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

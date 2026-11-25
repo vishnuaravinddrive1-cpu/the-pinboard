@@ -43,5 +43,5 @@ test('deep links survive refresh (SPA fallback) and Terms render', async ({ page
   for (const [path, text] of [['/terms', 'Terms and Conditions'], ['/organiser', 'Organiser area'], ['/admin', 'Admin login'], ['/privacy', 'Privacy']] as const) {
     await page.goto(path); await page.reload(); await expect(page.getByRole('heading', { name: text }).first()).toBeVisible()
   }
-  await page.goto('/terms'); await expect(page.getByText('Vishnu Aravind')).toBeVisible(); await expect(page.getByText('66, Baroda Street, West Mambalam, Chennai')).toBeVisible()
+  await page.goto('/terms'); await expect(page.getByText('Vishnu Aravind').first()).toBeVisible(); await expect(page.getByText('66, Baroda Street, West Mambalam, Chennai').first()).toBeVisible(); await expect(page.getByText('Notes for you')).toHaveCount(0); await expect(page.getByText('Version 0.1').first()).toBeVisible()
 })

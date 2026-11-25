@@ -5,7 +5,7 @@ Browser tests run against the production build in **demo mode** (data in the bro
 
 | Suite | Result |
 |---|---|
-| Browser tests (viewer, organiser, admin, layouts, fonts) × 3 devices | **127 passed, 8 skipped** (skips = hover/keyboard tests on touch devices, phone-only tests on desktop) |
+| Browser tests (viewer, organiser, admin, layouts, fonts) × 3 devices | **127 passed, 8 skipped (re-run after the palette and Terms change)** (skips = hover/keyboard tests on touch devices, phone-only tests on desktop) |
 | Database tests (`supabase/tests/tests.sql`) | **75 checks passed** |
 | 100-cap with real default limit (seed 20 + `seed_filler(90)`) | 100 live, rest waiting, public view returns exactly 100 |
 | Lighthouse mobile (home page, built site) | Performance **95**, Accessibility **100**, Best practices **100**, SEO **100**; CLS 0, TBT 30 ms |
