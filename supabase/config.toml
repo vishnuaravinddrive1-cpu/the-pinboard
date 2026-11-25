@@ -1,0 +1,9 @@
+project_id = "pinboard"
+
+# These functions authenticate themselves (shared secret / signed link), so Supabase's JWT check is off.
+[functions.send-emails]
+verify_jwt = false
+[functions.retention]
+verify_jwt = false
+[functions.takedown]
+verify_jwt = false

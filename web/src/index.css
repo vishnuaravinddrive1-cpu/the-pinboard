@@ -1,0 +1,80 @@
+@import '@fontsource/outfit/latin-400.css';
+@import '@fontsource/outfit/latin-500.css';
+@import '@fontsource/outfit/latin-600.css';
+@import '@fontsource/outfit/latin-700.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cream: #F9F2E3; --brown: #312122; --terracotta: #CC8463; --rust: #9B5033; --peach: #E3BBA3;
+  --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); --sal: env(safe-area-inset-left); --sar: env(safe-area-inset-right);
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { @apply bg-brown text-brown font-sans antialiased; font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  /* Outfit everywhere, including form controls (they do not inherit by default). */
+  button, input, select, textarea, table { font-family: inherit; }
+  input, select, textarea { font-size: 16px; } /* stops iOS zoom on focus */
+  :focus-visible { outline: 3px solid var(--terracotta); outline-offset: 2px; }
+  em, i, cite { font-style: normal; font-weight: 600; } /* Outfit has no italic: never fake it */
+  a { color: var(--rust); }
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 font-semibold min-h-[44px] min-w-[44px] transition-transform active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed select-none; }
+  .btn-primary { @apply btn bg-rust text-cream hover:bg-[#843f26]; }
+  .btn-secondary { @apply btn bg-peach text-brown hover:bg-[#d9ab8f]; }
+  .btn-ghost { @apply btn bg-transparent text-brown border-2 border-brown/30 hover:bg-brown/5; }
+  .btn-danger { @apply btn bg-[#8a2b1d] text-cream hover:bg-[#6f2217]; }
+  .field { @apply w-full rounded-xl border-2 border-brown/25 bg-white px-3 min-h-[48px] text-brown placeholder:text-brown/50 focus:border-rust; }
+  .label { @apply block text-sm font-semibold mb-1; }
+  .card { @apply rounded-2xl bg-cream shadow-lg border border-brown/10; }
+  .caption { @apply text-sm font-normal text-rust; }
+  .chip { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+}
+
+/* ---------- Dark cork board ---------- */
+.cork {
+  background-color: #2a1c16;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .55  0 0 0 0 .36  0 0 0 0 .24  0 0 0 1.1 -.42'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='360' height='360'><filter id='m' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='turbulence' baseFrequency='.045' numOctaves='2' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .1  0 0 0 0 .06  0 0 0 0 .04  0 0 0 .9 -.25'/></filter><rect width='100%25' height='100%25' filter='url(%23m)'/></svg>"),
+    radial-gradient(circle at 20% 15%, #3b2a20 0, transparent 55%),
+    radial-gradient(circle at 80% 70%, #35241b 0, transparent 60%);
+  background-size: 240px 240px, 360px 360px, auto, auto;
+}
+.board-frame { pointer-events: none; position: fixed; inset: 0; z-index: 40;
+  box-shadow: inset 0 0 0 10px #312122, inset 0 0 0 12px #5a3a2e, inset 0 0 90px 30px rgba(0,0,0,.55); }
+@media (max-width: 640px) { .board-frame { box-shadow: inset 0 0 0 6px #312122, inset 0 0 0 7px #5a3a2e, inset 0 0 50px 14px rgba(0,0,0,.5); } }
+
+/* ---------- Posters ---------- */
+.poster { position: absolute; will-change: transform; transition: transform .22s ease, box-shadow .22s ease; outline-offset: 6px; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.poster .sheet { position: absolute; inset: 0; background: var(--cream); border-radius: 3px; overflow: hidden; box-shadow: 0 6px 14px rgba(0,0,0,.55), 0 1px 3px rgba(0,0,0,.6); transition: box-shadow .22s ease; }
+.poster.raised { z-index: 900 !important; }
+.poster.raised .sheet { box-shadow: 0 22px 38px rgba(0,0,0,.7), 0 4px 10px rgba(0,0,0,.6); }
+.poster.skeleton .sheet { background: linear-gradient(100deg, #3a2a22 30%, #4a362b 50%, #3a2a22 70%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+.pin { position: absolute; top: -9px; width: 22px; height: 22px; margin-left: -11px; z-index: 2; pointer-events: none; }
+.pin::before { content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffe3d1 0 9%, var(--terracotta) 22%, var(--rust) 62%, #5e2a16 100%);
+  box-shadow: 3px 5px 5px rgba(0,0,0,.55), inset -2px -2px 3px rgba(0,0,0,.35); }
+.pin.alt::before { background: radial-gradient(circle at 34% 30%, #fff 0 8%, #e9a583 22%, var(--terracotta) 60%, #8a4a2e 100%); }
+.tape { position: absolute; top: -10px; width: 64px; height: 22px; background: rgba(227,187,163,.82); box-shadow: 0 1px 2px rgba(0,0,0,.3); pointer-events: none; z-index: 2; }
+
+.vignette { pointer-events: none; position: fixed; inset: 0; z-index: 30; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.45) 100%); }
+
+/* ---------- Lightbox ---------- */
+.lb-enter { animation: lbIn .2s ease-out; }
+@keyframes lbIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+.zoomable { touch-action: none; user-select: none; -webkit-user-drag: none; will-change: transform; }
+
+.safe-top { padding-top: max(10px, var(--sat)); }
+.safe-bottom { padding-bottom: max(12px, var(--sab)); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
