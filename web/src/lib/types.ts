@@ -123,9 +123,11 @@ export interface Backend {
   // auth
   getUser(): Promise<SessionUser | null>
   onAuthChange(cb: () => void): () => void
-  signUp(email: string, password: string, name: string): Promise<{ needsConfirm: boolean }>
-  signIn(email: string, password: string): Promise<void>
+  /** Passwordless sign-in: an emailed 6-digit code (or Google). For sign-up, name and the accepted Terms version are required. */
+  requestCode(email: string, opts: { mode: 'login' | 'signup'; name?: string }): Promise<void>
+  verifyCode(email: string, code: string): Promise<void>
   signInGoogle(): Promise<void>
+  authOptions(): Promise<{ google: boolean; demo: boolean }>
   signOut(): Promise<void>
   acceptTerms(): Promise<void>
   // organiser

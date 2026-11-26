@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { fixture, login, noHScroll, openBoard, stubExternal } from './helpers'
+import { codeFor, fixture, login, noHScroll, openBoard, stubExternal } from './helpers'
 import { statSync } from 'node:fs'
 
 const dayOffset = (n: number) => new Date(Date.now() + n * 864e5 + 5.5 * 36e5).toISOString().slice(0, 10)
@@ -22,15 +22,18 @@ test.describe('organiser area', () => {
     await stubExternal(page); await page.goto('/organiser')
     await page.getByRole('tab', { name: 'Sign up' }).click()
     await page.getByLabel('Your name or group').fill('Chennai Readers')
-    await page.getByLabel('Email').fill('readers@example.org'); await page.getByLabel('Password').fill('longpassword1')
-    await page.getByRole('button', { name: 'Create account' }).click()
+    await page.getByLabel('Email').fill('readers@example.org')
+    await page.getByRole('button', { name: 'Send me a code' }).click()
     await expect(page.getByRole('alert')).toContainText('accept the Terms')
     await page.getByRole('checkbox').check()
+    await page.getByRole('button', { name: 'Send me a code' }).click()
+    await page.getByLabel('6-digit code').fill('000001')
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await expect(page.getByRole('alert')).toContainText(/not right|expired/)
+    await page.getByLabel('6-digit code').fill(await codeFor(page, 'readers@example.org'))
     await page.getByRole('button', { name: 'Create account' }).click()
     await expect(page.getByRole('heading', { name: 'Pending approval' })).toBeVisible()
     await expect(page.getByRole('button', { name: '+ New poster' })).toHaveCount(0)
-    const accepted = await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v2')!).profiles.find((p: any) => p.email === 'readers@example.org'))
-    expect(accepted.terms_version).toBeTruthy(); expect(accepted.terms_accepted_at).toBeTruthy()
   })
 
   test('suspended organiser sees the suspension notice', async ({ page }) => {

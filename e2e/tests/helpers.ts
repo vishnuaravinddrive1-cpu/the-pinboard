@@ -16,11 +16,21 @@ export async function openBoard(page: Page, path = '/') {
   await page.goto(path)
   await expect(page.getByTestId('poster').first()).toBeVisible()
 }
+/** Reads the sign-in code: in the full-stack test server it comes from the fake mailbox, in demo mode it is always 123456. */
+export async function codeFor(page: Page, email: string): Promise<string> {
+  try {
+    const r = await page.request.get('/__test/code?email=' + encodeURIComponent(email))
+    if ((r.headers()['content-type'] ?? '').includes('json')) { const j = await r.json(); if (j.code) return j.code }
+  } catch { /* demo mode */ }
+  return '123456'
+}
 export async function login(page: Page, email: string, area: 'organiser' | 'admin') {
   await stubExternal(page)
   await page.goto('/' + area)
   await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill('password123')
+  await page.getByRole('button', { name: 'Send me a code' }).click()
+  await page.getByLabel('6-digit code').waitFor()
+  await page.getByLabel('6-digit code').fill(await codeFor(page, email))
   await page.getByRole('button', { name: 'Log in', exact: true }).last().click()
 }
 export const noHScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && document.body.scrollWidth <= window.innerWidth + 1)

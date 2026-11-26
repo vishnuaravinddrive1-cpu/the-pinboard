@@ -2,7 +2,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, claude/lucid-lamport-j3x023]
 jobs:
   web:
     runs-on: ubuntu-latest
@@ -15,11 +15,22 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
-  database:
+  api-and-database:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: api/package-lock.json }
       - name: Install Postgres 16
         run: sudo apt-get update && sudo apt-get install -y postgresql-16
-      - name: Migrations + RLS/queue/expiry tests
-        run: sudo bash supabase/tests/run_local.sh
+      - run: npm ci
+        working-directory: api
+      - run: npm run typecheck
+        working-directory: api
+      - name: Database tests (RLS, roles, cap, queue, expiry)
+        run: sudo bash db/tests/run_local.sh
+      - name: API tests (sign-in, uploads, queue, emails, take-down link)
+        run: sudo env "PATH=$PATH" bash api/test/run.sh
+      - name: Worker bundles for Cloudflare
+        working-directory: api
+        run: mkdir -p ../web/dist && echo '<!doctype html>' > ../web/dist/index.html && npx wrangler deploy --dry-run --config ../wrangler.toml --outdir /tmp/worker-out

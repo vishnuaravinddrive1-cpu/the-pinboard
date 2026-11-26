@@ -1,0 +1,30 @@
+# One Cloudflare Worker serves the website (static files from web/dist), the API (/api/*), poster images (/img/*)
+# and the scheduled jobs. Deploy: see .github/workflows/deploy.yml (or `npx wrangler deploy` after `npm run build` in web/).
+name = "pinboard"
+main = "api/src/index.ts"
+compatibility_date = "2026-11-01"
+
+[assets]
+directory = "./web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"   # /p/123, /organiser, /admin load index.html on refresh
+run_worker_first = ["/api/*", "/img/*", "/takedown"]
+
+[triggers]
+# 00:00 IST (18:30 UTC): archive expired posters, promote the queue, queue reminders, retention.  Hourly: retry failed emails.
+crons = ["30 18 * * *", "0 * * * *"]
+
+[observability]
+enabled = true
+
+# Optional: store poster images in Cloudflare R2 instead of the Neon database (R2 may ask for a card on file).
+# 1) npx wrangler r2 bucket create pinboard-images   2) uncomment these three lines   3) redeploy.
+# [[r2_buckets]]
+# binding = "IMAGES"
+# bucket_name = "pinboard-images"
+
+# Optional custom domain (only if the domain's DNS is on Cloudflare):
+# routes = [{ pattern = "pinboard.example.com", custom_domain = true }]
+#
+# Secrets (never put these in this file): DATABASE_URL, RESEND_API_KEY, TAKEDOWN_SECRET,
+# and optionally GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, BOOTSTRAP_ADMIN_EMAIL, SITE_URL, FROM_EMAIL.

@@ -1,4 +1,4 @@
-/** Demo backend: runs entirely in the browser (localStorage). Used when no Supabase env vars are set. */
+/** Demo backend: runs entirely in the browser (localStorage). Used when the website is not served together with the Pin Board API (e.g. `npm run dev`, static previews). */
 import { config } from '../config'
 import { addDays, istToday } from './dates'
 import { hostOf } from './validate'
@@ -12,6 +12,8 @@ interface State {
   settings: Settings; userId: string | null; reviewed: string[]; daily: Record<string, { views: number; clicks: number }>
 }
 const KEY = 'pinboard.demo.v2'
+export const DEMO_CODE = '123456'
+let pendingCode: { email: string; name: string; mode: 'login' | 'signup' } | null = null
 const listeners = new Set<() => void>()
 let state: State
 
@@ -121,20 +123,29 @@ export const demoBackend: Backend = {
     return { id: u.id, email: u.email, display_name: u.display_name, role: u.role, status: u.status, terms_version: u.terms_version }
   },
   onAuthChange(cb) { listeners.add(cb); return () => listeners.delete(cb) },
-  async signUp(emailAddr, _pw, name) {
-    if (state.profiles.some((p) => p.email === emailAddr.toLowerCase())) throw new Error('That email is already registered. Try logging in.')
-    const p: Profile = { id: uid(), email: emailAddr.toLowerCase(), display_name: name, role: 'organiser', status: 'pending', terms_version: config.termsVersion, terms_accepted_at: nowIso(), created_at: nowIso() }
-    state.profiles.push(p); state.userId = p.id
-    log(p.email, 'terms_accepted', `version ${config.termsVersion}`); log(p.email, 'signup', 'awaiting approval')
-    email(state.settings.admin_email, 'admin_new_organiser'); save(); notifyAuth()
-    return { needsConfirm: false }
+  async requestCode(emailAddr, opts) {
+    const em = emailAddr.trim().toLowerCase()
+    if (!/^\S+@\S+\.\S+$/.test(em)) throw new Error('Please enter a valid email address.')
+    const exists = state.profiles.some((p) => p.email === em)
+    if (opts.mode === 'signup' && !exists && (opts.name ?? '').trim().length < 2) throw new Error("Please enter your name or your group's name.")
+    if (opts.mode === 'login' && !exists) throw new Error('No account with that email. (Demo accounts: admin@demo.test, organiser@demo.test, newbie@demo.test, suspended@demo.test)')
+    pendingCode = { email: em, name: (opts.name ?? '').trim(), mode: opts.mode }
   },
-  async signIn(emailAddr) {
-    const p = state.profiles.find((x) => x.email === emailAddr.toLowerCase())
-    if (!p) throw new Error('No account with that email. (Demo accounts: admin@demo.test, organiser@demo.test, newbie@demo.test)')
-    state.userId = p.id; save(); notifyAuth()
+  async verifyCode(emailAddr, code) {
+    const em = emailAddr.trim().toLowerCase()
+    if (!pendingCode || pendingCode.email !== em) throw new Error('That code has expired. Please ask for a new one.')
+    if (code.trim() !== DEMO_CODE) throw new Error('That code is not right. In demo mode the code is ' + DEMO_CODE + '.')
+    let p = state.profiles.find((x) => x.email === em)
+    if (!p) {
+      p = { id: uid(), email: em, display_name: pendingCode.name, role: 'organiser', status: 'pending', terms_version: config.termsVersion, terms_accepted_at: nowIso(), created_at: nowIso() }
+      state.profiles.push(p)
+      log(p.email, 'terms_accepted', `version ${config.termsVersion}`); log(p.email, 'signup', 'awaiting approval')
+      email(state.settings.admin_email, 'admin_new_organiser')
+    }
+    pendingCode = null; state.userId = p.id; save(); notifyAuth()
   },
-  async signInGoogle() { throw new Error('Google sign-in needs a connected Supabase project. Use email in demo mode.') },
+  async signInGoogle() { throw new Error('Google sign-in is only available on the live site. In demo mode use email.') },
+  async authOptions() { return { google: false, demo: true } },
   async signOut() { state.userId = null; save(); notifyAuth() },
   async acceptTerms() {
     const u = needUser(); u.terms_version = state.settings.terms_version; u.terms_accepted_at = nowIso()

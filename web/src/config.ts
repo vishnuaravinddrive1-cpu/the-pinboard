@@ -14,8 +14,6 @@ export const config = {
   termsVersion: '0.1',
   boardLimit: 100,
   timezone: 'Asia/Kolkata',
-  supabaseUrl: (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? '',
-  supabaseAnonKey: (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? '',
   categories: ['Experience', 'Arts', 'Knowledge', 'Discussion', 'Social', 'Other'] as const,
   areas: [
     'Adyar', 'Alwarpet', 'Anna Nagar', 'Besant Nagar', 'Chromepet', 'ECR', 'Egmore', 'Guindy', 'Kilpauk',
@@ -23,4 +21,3 @@ export const config = {
     'Tambaram', 'Thiruvanmiyur', 'Velachery', 'West Mambalam', 'Other',
   ],
 }
-export const demoMode = !config.supabaseUrl || !config.supabaseAnonKey
