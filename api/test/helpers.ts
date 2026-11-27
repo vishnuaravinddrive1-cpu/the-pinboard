@@ -18,28 +18,16 @@ export class Client {
     if (opts.form) payload = opts.form
     else if (body !== undefined) { headers['content-type'] = 'application/json'; payload = JSON.stringify(body) }
     const res = await this.h.app.request(ORIGIN + path, { method, headers, body: payload })
-    const sc = res.headers.getSetCookie?.() ?? []
-    for (const c of sc) { const [kv] = c.split(';'); const [k, v] = kv.split('='); if (/max-age=0|expires=thu, 01 jan 1970/i.test(c) || v === '') this.cookie = ''; else this.cookie = `${k}=${v}` }
+    for (const c of res.headers.getSetCookie?.() ?? []) { const [kv] = c.split(';'); const [k, v] = kv.split('='); if (/max-age=0|expires=thu, 01 jan 1970/i.test(c) || v === '') this.cookie = ''; else this.cookie = `${k}=${v}` }
     const text = await res.text()
     let json: any = null; try { json = JSON.parse(text) } catch { /* not json */ }
     return { status: res.status, json, text, headers: res.headers }
   }
   get(p: string) { return this.req('GET', p) }
   post(p: string, b?: unknown) { return this.req('POST', p, b ?? {}) }
-  async login(email: string, name = 'Test User', terms = '0.1') {
-    await this.post('/api/auth/request-code', { email, mode: 'signup', name, terms_version: terms })
-    const code = await lastCode(this.h, email)
-    return this.post('/api/auth/verify', { email, code })
-  }
+  /** Signs in with a personal link (the way organisers do after the admin emails it). */
+  async useLink(url: string) { return this.post('/api/auth/use-link', { token: new URL(url).searchParams.get('link') }) }
 }
-export async function lastCode(h: H, email: string): Promise<string> {
-  await h.flush(); await drain(h)
-  const m = [...h.mails].reverse().find((x) => x.to[0] === email && /^Your Pin Board code: \d{6}$/.test(x.subject))
-  if (!m) throw new Error('no code email for ' + email)
-  return m.subject.slice(-6)
-}
-import { drainEmails } from '../src/email.ts'
-export const drain = async (h: H) => { await h.flush(); return drainEmails(h.deps, 50) }
 export function posterForm(meta: Record<string, unknown>, full = webp(3000), thumb = webp(1500)) {
   const f = new FormData()
   f.set('meta', JSON.stringify({ area: 'Adyar', category: 'Arts', confirmed: true, width: 600, height: 800, ...meta }))

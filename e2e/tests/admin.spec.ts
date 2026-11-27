@@ -9,21 +9,52 @@ test.describe('admin console', () => {
 
   test('dashboard shows the stats cards', async ({ page }) => {
     await login(page, 'admin@demo.test', 'admin')
-    for (const l of ['Live posters', 'Waiting queue', 'Past (archived)', 'Pending organisers', 'Total views', 'Booking clicks', 'Storage used', 'Emails today']) await expect(page.getByText(l, { exact: true })).toBeVisible()
+    for (const l of ['Live posters', 'Waiting queue', 'Past (archived)', 'Pending organisers', 'Total views', 'Booking clicks', 'Storage used', 'Emails to send']) await expect(page.getByText(l, { exact: true })).toBeVisible()
     await expect(page.getByText(/\d+ of 100/)).toBeVisible()
     await expect(page.getByText('Top categories')).toBeVisible(); await expect(page.getByText('Events per week')).toBeVisible()
     await expect(page.locator('svg[role=img]')).toHaveCount(2)
   })
 
-  test('approve a pending organiser: status changes, activity logged, email recorded', async ({ page }) => {
+  test('approve a pending organiser: status changes, activity logged, a ready-to-send email appears in the Outbox', async ({ page }) => {
     await login(page, 'admin@demo.test', 'admin')
     await page.getByRole('tab', { name: 'Organisers' }).click()
     const row = page.getByTestId('admin-organiser').filter({ hasText: 'newbie@demo.test' })
     await expect(row).toContainText('pending')
     await row.getByRole('button', { name: 'Approve' }).click()
     await expect(row).toContainText('approved')
-    await page.getByRole('tab', { name: 'Emails' }).click(); await expect(page.getByText('organiser_approved', { exact: true })).toBeVisible()
+    await page.getByRole('tab', { name: /Outbox/ }).click()
+    const mail = page.getByTestId('outbox-item').filter({ hasText: 'newbie@demo.test' })
+    await expect(mail.getByTestId('outbox-to')).toHaveText('newbie@demo.test')
+    await expect(mail.getByTestId('outbox-subject')).toHaveText('You are approved to post on Pin Board')
+    await expect(mail.getByTestId('outbox-body')).toContainText('Your sign-in link:')
+    await expect(mail.getByTestId('outbox-body')).toContainText('/organiser?link=')
+    const href = await mail.getByRole('link', { name: 'Open in my email app' }).getAttribute('href')
+    expect(href).toMatch(/^mailto:newbie@demo\.test\?subject=You%20are%20approved/); expect(href).toContain('body=')
     await page.getByRole('tab', { name: 'Activity' }).click(); await expect(page.getByText('organiser_approved', { exact: true })).toBeVisible()
+  })
+
+  test('outbox: mark as sent, skip, put back; the To-send count follows', async ({ page }) => {
+    await login(page, 'admin@demo.test', 'admin')
+    await page.getByRole('tab', { name: 'Organisers' }).click()
+    page.on('dialog', (d) => d.accept('test reason'))
+    await page.getByTestId('admin-organiser').filter({ hasText: 'newbie@demo.test' }).getByRole('button', { name: 'Approve' }).click()
+    await page.getByTestId('admin-organiser').filter({ hasText: 'newbie@demo.test' }).getByRole('button', { name: 'Suspend' }).click()
+    await page.getByRole('tab', { name: /Outbox/ }).click()
+    await expect(page.getByTestId('outbox-item')).toHaveCount(2)
+    await expect(page.getByRole('tab', { name: /Outbox \(2\)/ })).toBeVisible()
+    await page.getByTestId('outbox-item').first().getByRole('button', { name: 'Mark as sent' }).click()
+    await expect(page.getByTestId('outbox-item')).toHaveCount(1)
+    await page.getByTestId('outbox-item').first().getByRole('button', { name: 'Skip' }).click()
+    await expect(page.getByTestId('outbox-empty')).toBeVisible()
+    await page.getByRole('tab', { name: 'Sent' }).click(); await expect(page.getByTestId('outbox-item')).toHaveCount(1)
+    await page.getByTestId('outbox-item').first().getByRole('button', { name: 'Put back in To send' }).click()
+    await page.getByRole('tab', { name: 'To send' }).click(); await expect(page.getByTestId('outbox-item')).toHaveCount(1)
+  })
+
+  test('make a personal sign-in link for an organiser', async ({ page }) => {
+    await login(page, 'admin@demo.test', 'admin'); await page.getByRole('tab', { name: 'Organisers' }).click()
+    await page.getByTestId('admin-organiser').filter({ hasText: 'organiser@demo.test' }).getByRole('button', { name: 'Make sign-in link' }).click()
+    await expect(page.getByTestId('org-link')).toContainText('/organiser?link=')
   })
 
   test('suspend and reinstate an organiser (dialog asks for a reason)', async ({ page }) => {
@@ -45,7 +76,7 @@ test.describe('admin console', () => {
     await row.getByRole('button', { name: 'Extend +7d' }).click()
     page.on('dialog', (d) => d.accept(d.type() === 'prompt' ? 'Not a Chennai event' : undefined))
     await row.getByRole('button', { name: 'Out of scope' }).click(); await expect(row).toContainText('taken down'); await expect(row).toContainText('Not a Chennai event')
-    await page.getByRole('tab', { name: 'Emails' }).click(); await expect(page.getByText('poster_out_of_scope')).toBeVisible()
+    await page.getByRole('tab', { name: /Outbox/ }).click(); await expect(page.getByTestId('outbox-item').filter({ hasText: 'poster out of scope' }).getByTestId('outbox-body')).toContainText('Not a Chennai event')
     await page.getByRole('tab', { name: 'Posters' }).click()
     await page.getByTestId('admin-poster').filter({ hasText: 'Board Games Meetup' }).getByRole('button', { name: 'Delete' }).click()
     await expect(page.getByTestId('admin-poster').filter({ hasText: 'Board Games Meetup' })).toHaveCount(0)
@@ -62,13 +93,13 @@ test.describe('admin console', () => {
 
   test('queue: full board queues a poster, take-down promotes it at once, admin can promote/reorder', async ({ page }) => {
     await login(page, 'admin@demo.test', 'admin'); await page.getByRole('tab', { name: 'Settings' }).click()
-    const live = await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v2')!).posters.filter((p: any) => p.status === 'live').length)
+    const live = await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v3')!).posters.filter((p: any) => p.status === 'live').length)
     await page.getByLabel('Board limit (live posters)').fill(String(live)); await page.getByRole('button', { name: 'Save settings' }).click(); await expect(page.getByText('Saved.')).toBeVisible()
     // add two waiting posters straight into the demo store (the organiser upload path is covered in organiser.spec)
     await page.evaluate(() => {
-      const s = JSON.parse(localStorage.getItem('pinboard.demo.v2')!); const base = s.posters[0]
+      const s = JSON.parse(localStorage.getItem('pinboard.demo.v3')!); const base = s.posters[0]
       for (const [i, t] of ['Queue A', 'Queue B'].entries()) s.posters.push({ ...base, id: 'q' + i, title: t, status: 'waiting', queue_position: i + 1, created_at: new Date(Date.now() + i).toISOString() })
-      localStorage.setItem('pinboard.demo.v2', JSON.stringify(s))
+      localStorage.setItem('pinboard.demo.v3', JSON.stringify(s))
     })
     await page.reload(); await page.getByRole('tab', { name: 'Posters' }).click()
     const a = page.getByTestId('admin-poster').filter({ hasText: 'Queue A' }), b = page.getByTestId('admin-poster').filter({ hasText: 'Queue B' })

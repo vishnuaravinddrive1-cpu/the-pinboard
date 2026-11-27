@@ -2,18 +2,17 @@
 import { config } from '../config'
 import { addDays, istToday } from './dates'
 import { hostOf } from './validate'
+import { demoEmail } from './demoEmail'
 import { seedPosters } from './demoSeed'
 import type {
-  Backend, EmailRow, LogEntry, NewPosterInput, Poster, PosterAction, Profile, PublicPoster, Report, SessionUser, Settings, Stats,
+  Backend, LogEntry, OutboxEmail, NewPosterInput, Poster, PosterAction, Profile, PublicPoster, Report, SessionUser, Settings, Stats,
 } from './types'
 
 interface State {
-  posters: Poster[]; profiles: Profile[]; logs: LogEntry[]; emails: EmailRow[]; reports: Report[]
-  settings: Settings; userId: string | null; reviewed: string[]; daily: Record<string, { views: number; clicks: number }>
+  posters: Poster[]; profiles: Profile[]; logs: LogEntry[]; reports: Report[]
+  settings: Settings; outbox: { id: string; to: string; template: string; payload: Record<string, string>; status: 'queued' | 'sent' | 'skipped'; created_at: string; sent_at: string | null }[]; userId: string | null; reviewed: string[]; daily: Record<string, { views: number; clicks: number }>
 }
-const KEY = 'pinboard.demo.v2'
-export const DEMO_CODE = '123456'
-let pendingCode: { email: string; name: string; mode: 'login' | 'signup' } | null = null
+const KEY = 'pinboard.demo.v3'
 const listeners = new Set<() => void>()
 let state: State
 
@@ -23,7 +22,7 @@ const nowIso = () => new Date().toISOString()
 function fresh(): State {
   const { posters, profiles } = seedPosters()
   return {
-    posters, profiles, logs: [], emails: [], reports: [], userId: null, reviewed: [], daily: {},
+    posters, profiles, logs: [], outbox: [], reports: [], userId: null, reviewed: [], daily: {},
     settings: {
       board_limit: config.boardLimit, reminder_days: 1, admin_email: config.operator.contact, terms_version: config.termsVersion,
       retention_years: 3, categories: [...config.categories], areas: [...config.areas],
@@ -42,9 +41,11 @@ function log(actor: string, action: string, detail: string) {
   state.logs.unshift({ id: uid(), at: nowIso(), actor, action, detail })
   state.logs = state.logs.slice(0, 500)
 }
-function email(to: string, template: string) {
-  state.emails.unshift({ id: uid(), to, template, status: 'sent', attempts: 1, created_at: nowIso() })
-  log('system', 'email_sent', `${template} -> ${to}`)
+function email(to: string, template: string, payload: Record<string, string> = {}) {
+  // Only messages the organiser cannot see on screen are queued, exactly like the live app.
+  if (!['organiser_approved', 'organiser_rejected', 'organiser_suspended', 'login_link', 'poster_promoted', 'poster_out_of_scope', 'event_reminder'].includes(template)) return
+  const prof = state.profiles.find((p) => p.email === to)
+  state.outbox.unshift({ id: uid(), to, template, payload: { name: prof?.display_name ?? '', ...payload }, status: 'queued', created_at: nowIso(), sent_at: null })
 }
 function admin() { return state.profiles.find((p) => p.role === 'admin')! }
 
@@ -66,7 +67,7 @@ function promote() {
     if (liveCount() >= state.settings.board_limit) break
     p.status = 'live'; p.queue_position = null
     log('system', 'queue_promoted', p.title)
-    email(p.organiser_email!, 'poster_promoted')
+    email(p.organiser_email!, 'poster_promoted', { title: p.title, event_date: p.event_date })
   }
   waiting().forEach((p, i) => { p.queue_position = i + 1 })
 }
@@ -115,7 +116,7 @@ export const demoBackend: Backend = {
   async report(id, reason) {
     const p = state.posters.find((x) => x.id === id); if (!p) throw new Error('Poster not found.')
     state.reports.unshift({ id: uid(), poster_id: id, poster_title: p.title, reason: reason.slice(0, 500), created_at: nowIso(), handled: false })
-    email(state.settings.admin_email, 'admin_report'); log('viewer', 'reported', p.title); save()
+    log('viewer', 'reported', p.title); save()
   },
 
   async getUser() {
@@ -123,29 +124,33 @@ export const demoBackend: Backend = {
     return { id: u.id, email: u.email, display_name: u.display_name, role: u.role, status: u.status, terms_version: u.terms_version }
   },
   onAuthChange(cb) { listeners.add(cb); return () => listeners.delete(cb) },
-  async requestCode(emailAddr, opts) {
+  async requestAccess(emailAddr, name) {
     const em = emailAddr.trim().toLowerCase()
     if (!/^\S+@\S+\.\S+$/.test(em)) throw new Error('Please enter a valid email address.')
-    const exists = state.profiles.some((p) => p.email === em)
-    if (opts.mode === 'signup' && !exists && (opts.name ?? '').trim().length < 2) throw new Error("Please enter your name or your group's name.")
-    if (opts.mode === 'login' && !exists) throw new Error('No account with that email. (Demo accounts: admin@demo.test, organiser@demo.test, newbie@demo.test, suspended@demo.test)')
-    pendingCode = { email: em, name: (opts.name ?? '').trim(), mode: opts.mode }
-  },
-  async verifyCode(emailAddr, code) {
-    const em = emailAddr.trim().toLowerCase()
-    if (!pendingCode || pendingCode.email !== em) throw new Error('That code has expired. Please ask for a new one.')
-    if (code.trim() !== DEMO_CODE) throw new Error('That code is not right. In demo mode the code is ' + DEMO_CODE + '.')
-    let p = state.profiles.find((x) => x.email === em)
-    if (!p) {
-      p = { id: uid(), email: em, display_name: pendingCode.name, role: 'organiser', status: 'pending', terms_version: config.termsVersion, terms_accepted_at: nowIso(), created_at: nowIso() }
-      state.profiles.push(p)
-      log(p.email, 'terms_accepted', `version ${config.termsVersion}`); log(p.email, 'signup', 'awaiting approval')
-      email(state.settings.admin_email, 'admin_new_organiser')
+    if (name.trim().length < 2) throw new Error("Please enter your name or your group's name.")
+    if (!state.profiles.some((p) => p.email === em)) {
+      const p: Profile = { id: uid(), email: em, display_name: name.trim(), role: 'organiser', status: 'pending', terms_version: config.termsVersion, terms_accepted_at: nowIso(), created_at: nowIso() }
+      state.profiles.push(p); log(em, 'terms_accepted', `version ${config.termsVersion}`); log(em, 'signup', 'awaiting approval'); save()
     }
-    pendingCode = null; state.userId = p.id; save(); notifyAuth()
   },
-  async signInGoogle() { throw new Error('Google sign-in is only available on the live site. In demo mode use email.') },
+  async requestLink(emailAddr) {
+    const p = state.profiles.find((x) => x.email === emailAddr.trim().toLowerCase() && x.status === 'approved')
+    if (p) { email(p.email, 'login_link', { signin_url: `${location.origin}/organiser?link=demo-${p.id}` }); save() }
+  },
+  async useLink(token) {
+    const p = state.profiles.find((x) => `demo-${x.id}` === token)
+    if (!p) throw new Error('That sign-in link is not valid or has expired. Ask for a new one.')
+    state.userId = p.id; save(); notifyAuth()
+  },
+  async setupAdmin() { const a = admin(); state.userId = a.id; save(); notifyAuth(); return { link: `${location.origin}/organiser?link=demo-${a.id}` } },
+  async myLink() { const u = needUser(); return `${location.origin}/organiser?link=demo-${u.id}` },
+  async signInGoogle() { throw new Error('Google sign-in is only available on the live site.') },
   async authOptions() { return { google: false, demo: true } },
+  demoAccounts() { return ['organiser@demo.test', 'newbie@demo.test', 'suspended@demo.test', 'admin@demo.test'] },
+  async demoLogin(emailAddr) {
+    const p = state.profiles.find((x) => x.email === emailAddr); if (!p) throw new Error('Unknown demo account.')
+    state.userId = p.id; save(); notifyAuth()
+  },
   async signOut() { state.userId = null; save(); notifyAuth() },
   async acceptTerms() {
     const u = needUser(); u.terms_version = state.settings.terms_version; u.terms_accepted_at = nowIso()
@@ -176,7 +181,6 @@ export const demoBackend: Backend = {
     if (input.area === 'Other') p.area = input.area_other ? `Other: ${input.area_other}` : 'Other'
     state.posters.push(p)
     log(u.email, isLive ? 'poster_posted' : 'poster_queued', p.title)
-    email(u.email, isLive ? 'poster_live' : 'poster_waiting'); email(state.settings.admin_email, 'admin_new_poster')
     save()
     return { id: p.id, status: p.status, queue_position: p.queue_position ?? null }
   },
@@ -217,7 +221,7 @@ export const demoBackend: Backend = {
       perWeek: Object.entries(weeks).sort().slice(-8).map(([week, count]) => ({ week, count })),
       topCategories: Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([category, count]) => ({ category, count })),
       daily, storageMb: Math.round(JSON.stringify(s.map((p) => p.image_url)).length / 1e4) / 100,
-      emailsToday: state.emails.filter((e) => e.created_at.slice(0, 10) === nowIso().slice(0, 10)).length, emailQuota: 100,
+      outbox: state.outbox.filter((e) => e.status === 'queued').length,
     } satisfies Stats
   },
   async adminPosters() { rebalance(); needAdmin(); save(); return state.posters.map(decorate) },
@@ -228,7 +232,7 @@ export const demoBackend: Backend = {
   async setOrganiserStatus(id, status, reason) {
     const a = needAdmin(); const p = state.profiles.find((x) => x.id === id); if (!p) throw new Error('Organiser not found.')
     p.status = status; log(a.email, `organiser_${status}`, `${p.email}${reason ? ' - ' + reason : ''}`)
-    email(p.email, `organiser_${status}`)
+    if (['approved', 'rejected', 'suspended'].includes(status)) email(p.email, `organiser_${status}`, { reason: reason ?? '', signin_url: status === 'approved' ? `${location.origin}/organiser?link=demo-${p.id}` : '' })
     if (status === 'suspended') for (const x of state.posters) if (x.organiser_id === id && x.status === 'live') { x.status = 'taken_down'; x.taken_down_reason = 'Organiser suspended' }
     promote(); save()
   },
@@ -237,14 +241,14 @@ export const demoBackend: Backend = {
     switch (action) {
       case 'take_down': p.status = 'taken_down'; p.taken_down_reason = arg ?? 'Taken down by admin'; break
       case 'out_of_scope':
-        p.status = 'taken_down'; p.taken_down_reason = arg || 'Out of scope (Terms 3.1)'; email(p.organiser_email!, 'poster_out_of_scope'); break
+        p.status = 'taken_down'; p.taken_down_reason = arg || 'Out of scope (Terms 3.1)'; email(p.organiser_email!, 'poster_out_of_scope', { title: p.title, reason: p.taken_down_reason ?? '' }); break
       case 'restore': p.status = liveCount() < state.settings.board_limit && p.event_date >= istToday() ? 'live' : 'waiting'; break
       case 'extend': p.event_date = addDays(p.event_date, Number(arg ?? 1)); if (p.status === 'expired') p.status = 'waiting'; break
       case 'delete': state.posters = state.posters.filter((x) => x.id !== id); break
       case 'promote':
         if (p.status !== 'waiting') throw new Error('Only waiting posters can be promoted.')
         if (liveCount() >= state.settings.board_limit) throw new Error('The board is full. Take a poster down first.')
-        { p.status = 'live'; p.queue_position = null; email(p.organiser_email!, 'poster_promoted') } break
+        { p.status = 'live'; p.queue_position = null; email(p.organiser_email!, 'poster_promoted', { title: p.title, event_date: p.event_date }) } break
       case 'mark_reviewed': state.reviewed.push(id); break
       case 'move_up': case 'move_down': {
         const q = waiting(); const i = q.findIndex((x) => x.id === id); const j = action === 'move_up' ? i - 1 : i + 1
@@ -255,7 +259,12 @@ export const demoBackend: Backend = {
     log(a.email, `poster_${action}`, p.title); promote(); save()
   },
   async adminLogs() { needAdmin(); return state.logs },
-  async adminEmails() { needAdmin(); return state.emails },
+  async adminOutbox(status) {
+    needAdmin()
+    return state.outbox.filter((e) => e.status === status).sort((a, b) => a.created_at.localeCompare(b.created_at)).map((e): OutboxEmail => ({ id: e.id, to: e.to, template: e.template, status: e.status, created_at: e.created_at, sent_at: e.sent_at, ...demoEmail(e.template, e.payload) }))
+  },
+  async setOutboxStatus(id, status) { needAdmin(); const e = state.outbox.find((x) => x.id === id); if (!e) throw new Error('Email not found.'); e.status = status; e.sent_at = status === 'sent' ? nowIso() : null; save() },
+  async organiserLink(id) { needAdmin(); if (!state.profiles.some((p) => p.id === id)) throw new Error('Organiser not found.'); return `${location.origin}/organiser?link=demo-${id}` },
   async adminReports() { needAdmin(); return state.reports },
   async getSettings() { return state.settings },
   async saveSettings(s) { const a = needAdmin(); state.settings = s; log(a.email, 'settings_saved', ''); promote(); save() },

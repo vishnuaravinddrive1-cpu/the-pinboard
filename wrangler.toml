@@ -11,8 +11,8 @@ not_found_handling = "single-page-application"   # /p/123, /organiser, /admin lo
 run_worker_first = ["/api/*", "/img/*", "/takedown"]
 
 [triggers]
-# 00:00 IST (18:30 UTC): archive expired posters, promote the queue, queue reminders, retention.  Hourly: retry failed emails.
-crons = ["30 18 * * *", "0 * * * *"]
+# 00:00 IST (18:30 UTC): archive expired posters, promote the queue, queue reminder emails (into the admin Outbox), retention.
+crons = ["30 18 * * *"]
 
 [observability]
 enabled = true
@@ -26,5 +26,5 @@ enabled = true
 # Optional custom domain (only if the domain's DNS is on Cloudflare):
 # routes = [{ pattern = "pinboard.example.com", custom_domain = true }]
 #
-# Secrets (never put these in this file): DATABASE_URL, RESEND_API_KEY, TAKEDOWN_SECRET,
-# and optionally GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, BOOTSTRAP_ADMIN_EMAIL, SITE_URL, FROM_EMAIL.
+# Secrets (never put these in this file): DATABASE_URL, ADMIN_SETUP_KEY, BOOTSTRAP_ADMIN_EMAIL,
+# and optionally SITE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET.

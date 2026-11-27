@@ -1,10 +1,9 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import { currentUser, endSession, requestCode, startSession, verifyCode } from './auth.ts'
+import { createAccessLink, currentUser, endSession, requestLink, setup, signup, startSession, useLink } from './auth.ts'
 import { asAnon, asOwner, asUser, describeDbError, q } from './db.ts'
-import { drainEmails } from './email.ts'
-import { sign, verify } from './sign.ts'
+import { render } from './templates.ts'
 import { isWebp, MAX_IMAGE_BYTES } from './store.ts'
 import { cleanName, istDate, randomToken, safeEqual } from './util.ts'
 import type { Deps, User } from './types.ts'
@@ -25,8 +24,6 @@ const full = (r: any) => ({ ...pub(r), status: r.status, views: r.views, clicks:
   created_at: r.created_at, flags: r.flags ?? [] })
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const html = (body: string, status = 200) => new Response(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:Outfit,Helvetica,Arial,sans-serif;background:#FAF3E6;color:#382525;max-width:480px;margin:40px auto;padding:0 16px">${body}</body>`, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 
 export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
   const app = new Hono<Vars>()
@@ -59,10 +56,9 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
     if (u.role !== 'admin' || u.status !== 'approved') return c.json({ error: 'Admins only.' }, 403)
     await next()
   }
-  const kick = () => d.defer(drainEmails(d).catch((e) => console.error('email drain failed', e)))
 
   // ---------- public ----------
-  app.get('/api/config', (c) => c.json({ service: 'pinboard', google: !!(d.cfg.googleId && d.cfg.googleSecret) }))
+  app.get('/api/config', (c) => c.json({ service: 'pinboard', google: !!(d.cfg.googleId && d.cfg.googleSecret), email: 'manual' }))
 
   app.get('/api/posters', async (c) => {
     const cache = (globalThis as any).caches?.default as Cache | undefined
@@ -85,7 +81,6 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
     const body = await c.req.json().catch(() => ({}))
     if (!UUID.test(c.req.param('id'))) return c.json({ error: 'Poster not found.' }, 404)
     await asAnon(d.db, q('select report_poster($1::uuid, $2)', c.req.param('id'), String(body.reason ?? '').slice(0, 500)))
-    kick()
     return c.json({ ok: true })
   })
 
@@ -98,18 +93,27 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
   })
 
   // ---------- sign-in ----------
-  app.post('/api/auth/request-code', async (c) => {
-    const r = await requestCode(d, await c.req.json().catch(() => ({})))
-    if ('error' in r) return c.json({ error: r.error }, r.status as 400)
-    kick()
-    return c.json({ ok: true })
+  app.post('/api/auth/signup', async (c) => {
+    const r = await signup(d, await c.req.json().catch(() => ({})))
+    return 'error' in r ? c.json({ error: r.error }, r.status as 400) : c.json({ ok: true })
   })
-  app.post('/api/auth/verify', async (c) => {
-    const r = await verifyCode(d, await c.req.json().catch(() => ({})))
+  app.post('/api/auth/request-link', async (c) => {
+    const r = await requestLink(d, await c.req.json().catch(() => ({})))
+    return 'error' in r ? c.json({ error: r.error }, r.status as 400) : c.json({ ok: true })
+  })
+  app.post('/api/auth/use-link', async (c) => {
+    const b = await c.req.json().catch(() => ({}))
+    const r = await useLink(d, b.token)
     if ('error' in r) return c.json({ error: r.error }, r.status as 400)
     await startSession(d, c, r.userId)
-    kick()
     return c.json({ ok: true })
+  })
+  app.post('/api/auth/setup', async (c) => {
+    const b = await c.req.json().catch(() => ({}))
+    const r = await setup(d, b.key)
+    if ('error' in r) return c.json({ error: r.error }, r.status as 400)
+    await startSession(d, c, r.userId)
+    return c.json({ ok: true, link: r.link })
   })
   app.post('/api/auth/logout', async (c) => { await endSession(d, c); return c.json({ ok: true }) })
 
@@ -138,7 +142,6 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
     if (!claims.email || claims.email_verified !== true) return fail('Your Google email is not verified.')
     const [rows] = await asOwner(d.db, q('select register_user($1, $2, null, $3) as id', String(claims.email).toLowerCase(), cleanName(claims.name), d.cfg.bootstrapAdmin ?? null))
     await startSession(d, c, rows[0].id)
-    kick()
     return c.redirect('/organiser')
   })
 
@@ -150,6 +153,8 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
   app.use('/api/me/*', needUser)
   app.use('/api/posters/:id', needUser)       // PATCH (owner or admin; Row Level Security decides)
   app.use('/api/settings', needUser)
+
+  app.post('/api/me/link', async (c) => c.json({ url: await createAccessLink(d, c.get('user').id) }))
 
   app.post('/api/me/accept-terms', async (c) => {
     const body = await c.req.json().catch(() => ({}))
@@ -196,8 +201,7 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
       const [rows] = await asUser(d.db, u.id, q('select * from create_poster($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10::int, $11::int, $12::int, $13::int)',
         cleanName(m.title, 120), String(m.event_date), m.booking_url || null, cleanName(m.area, 80), cleanName(m.area_other, 60), cleanName(m.category, 40),
         m.confirmed === true, fullKey, thumbKey, Number(m.width), Number(m.height), fullImg.length, thumb.length))
-      kick()
-      return c.json({ id: rows[0].id, status: rows[0].status, queue_position: rows[0].queue_position == null ? null : Number(rows[0].queue_position) })
+        return c.json({ id: rows[0].id, status: rows[0].status, queue_position: rows[0].queue_position == null ? null : Number(rows[0].queue_position) })
     } catch (e) { await d.store.delete([fullKey, thumbKey]).catch(() => {}); throw e }
   })
 
@@ -218,7 +222,6 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
   app.delete('/api/my/posters/:id', async (c) => {
     if (!UUID.test(c.req.param('id'))) return c.json({ error: 'Poster not found.' }, 404)
     await asUser(d.db, c.get('user').id, q('select delete_poster($1::uuid)', c.req.param('id')))
-    kick()
     return c.json({ ok: true })
   })
 
@@ -241,9 +244,24 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
   app.get('/api/admin/posters', async (c) => c.json((await adm(c, q(`select ${ADMIN_POSTER_COLS} from admin_posters order by event_date, created_at`)))[0].map(full)))
   app.get('/api/admin/organisers', async (c) => c.json((await adm(c, q('select id, email, display_name, role, status, terms_version, terms_accepted_at, created_at, poster_count::int as poster_count from admin_organisers order by created_at desc')))[0]))
   app.get('/api/admin/logs', async (c) => c.json((await adm(c, q('select id, at, actor, action, detail from activity_log order by at desc limit 500')))[0]))
-  app.get('/api/admin/emails', async (c) => c.json((await adm(c, q(
-    `select id, to_email as "to", template, case when status = 'sent' then 'sent' when status in ('queued','sending') then 'queued' else 'failed' end as status,
-            attempts, created_at, last_error as error from email_queue order by created_at desc limit 300`)))[0]))
+  app.get('/api/admin/outbox', async (c) => {
+    const status = ['queued', 'sent', 'skipped'].includes(c.req.query('status') ?? '') ? c.req.query('status')! : 'queued'
+    const [rows] = await adm(c, q('select id, to_email, template, payload, status, created_at, sent_at from email_queue where status = $1 order by created_at limit 300', status))
+    return c.json(rows.map((r) => { const m = render(r.template, r.payload ?? {}, { siteUrl: d.cfg.siteUrl }); return { id: r.id, to: r.to_email, template: r.template, status: r.status, created_at: r.created_at, sent_at: r.sent_at, subject: m.subject, text: m.text } }))
+  })
+  app.post('/api/admin/outbox/:id', async (c) => {
+    const b = await c.req.json().catch(() => ({}))
+    if (!UUID.test(c.req.param('id'))) return c.json({ error: 'Email not found.' }, 404)
+    await adm(c, q('select admin_set_outbox($1::uuid, $2)', c.req.param('id'), String(b.status)))
+    return c.json({ ok: true })
+  })
+  app.post('/api/admin/organisers/:id/link', async (c) => {
+    const id = c.req.param('id')
+    if (!UUID.test(id)) return c.json({ error: 'Organiser not found.' }, 404)
+    const [rows] = await adm(c, q("select id from admin_organisers where id = $1::uuid", id))
+    if (!rows.length) return c.json({ error: 'Organiser not found.' }, 404)
+    return c.json({ url: await createAccessLink(d, id) })
+  })
   app.get('/api/admin/reports', async (c) => c.json((await adm(c, q(
     'select r.id, r.poster_id, p.title as poster_title, r.reason, r.created_at, r.handled from reports r join posters p on p.id = r.poster_id order by r.created_at desc limit 200')))[0]))
   app.put('/api/admin/settings', async (c) => {
@@ -258,38 +276,16 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
   app.post('/api/admin/organisers/:id/status', async (c) => {
     const b = await c.req.json().catch(() => ({}))
     if (!UUID.test(c.req.param('id'))) return c.json({ error: 'Organiser not found.' }, 404)
-    await adm(c, q('select admin_set_organiser_status($1::uuid, $2::organiser_status, $3)', c.req.param('id'), String(b.status), b.reason ? String(b.reason).slice(0, 300) : null))
-    kick()
+    const extra = b.status === 'approved' ? { signin_url: await createAccessLink(d, c.req.param('id')) } : {}
+    await adm(c, q('select admin_set_organiser_status($1::uuid, $2::organiser_status, $3, $4::jsonb)', c.req.param('id'), String(b.status), b.reason ? String(b.reason).slice(0, 300) : null, JSON.stringify(extra)))
     return c.json({ ok: true })
   })
   app.post('/api/admin/posters/:id/action', async (c) => {
     const b = await c.req.json().catch(() => ({}))
     if (!UUID.test(c.req.param('id'))) return c.json({ error: 'Poster not found.' }, 404)
     await adm(c, q('select admin_poster_action($1::uuid, $2, $3)', c.req.param('id'), String(b.action), b.arg == null ? null : String(b.arg).slice(0, 300)))
-    kick()
     return c.json({ ok: true })
   })
-
-  // ---------- one-click take-down from the admin email (signed link; confirmation page first) ----------
-  const takedown = async (c: Context<Vars>) => {
-    let id = c.req.query('id') ?? '', t = c.req.query('t') ?? ''
-    if (c.req.method === 'POST') { const f = await c.req.formData(); id = String(f.get('id') ?? id); t = String(f.get('t') ?? t) }
-    if (!UUID.test(id) || !(await verify(d.cfg.takedownSecret, id, t))) return html('<h1>Link not valid</h1>', 403)
-    const [rows] = await asOwner(d.db, q('select title, status from posters where id = $1::uuid', id))
-    const p = rows[0]; if (!p) return html('<h1>Poster not found</h1>', 404)
-    if (c.req.method !== 'POST') {
-      return html(`<h1>Take down this poster?</h1><p><strong>${esc(p.title)}</strong> (currently ${esc(p.status)})</p><form method="post"><input type="hidden" name="id" value="${id}"><input type="hidden" name="t" value="${esc(t)}"><button style="background:#8a2b1d;color:#FAF3E6;border:0;padding:14px 22px;border-radius:10px;font:600 16px Outfit,sans-serif">Yes, take it down</button></form>`)
-    }
-    if (c.req.header('origin') && c.req.header('origin') !== new URL(c.req.url).origin) return html('<h1>Blocked</h1>', 403)
-    if (p.status === 'live' || p.status === 'waiting') {
-      await asOwner(d.db,
-        q("update posters set status = 'taken_down', taken_down_reason = 'Taken down by admin (email link)' where id = $1::uuid", id),
-        q("select log_event('admin (email link)', 'poster_take_down', $1)", p.title))
-    }
-    return html(`<h1>Done</h1><p>“${esc(p.title)}” is no longer on the board.</p>`)
-  }
-  app.get('/takedown', takedown)
-  app.post('/takedown', takedown)
 
   extend?.(app)   // test-only routes (never used in production)
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404))
@@ -304,4 +300,3 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
   })
   return app
 }
-export { sign }

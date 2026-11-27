@@ -38,7 +38,7 @@ begin
   perform t.ok((select register_user('orga@test.dev', 'x', null)) = (select id from t.ids where name='orgA'), 'registering an existing email returns the same account');
   perform t.ok((select count(*) from terms_acceptances) = 4, 'terms acceptance (version + timestamp) stored at sign-up');
   perform t.ok((select status from profiles where email = 'orga@test.dev') = 'pending', 'new organisers start as pending');
-  perform t.ok((select count(*) from email_queue where template = 'admin_new_organiser') = 4, 'admin is emailed for each new organiser');
+  perform t.ok((select count(*) from email_queue) = 0, 'sign-ups create no emails to send (the admin sees pending organisers in the console)');
 end $$;
 
 -- ---------------------------------------------------------------- roles and RLS
@@ -91,8 +91,7 @@ begin
   for r in select * from t.mk('orgA', 'Poster 4', 4) loop ids := ids || r.id; perform t.ok(r.status = 'waiting' and r.queue_position = 1, 'poster 4 waits at queue position 1'); end loop;
   for r in select * from t.mk('orgB', 'Poster 5', 5) loop ids := ids || r.id; perform t.ok(r.status = 'waiting' and r.queue_position = 2, 'poster 5 waits at queue position 2'); end loop;
   perform t.as_anon(); perform t.ok((select count(*) from public_posters) = 3, 'public board shows only the 3 live posters (waiting never shown)'); reset role;
-  perform t.ok((select count(*) from email_queue where template = 'poster_waiting') = 2, 'waiting emails queued');
-  perform t.ok((select count(*) from email_queue where template = 'admin_new_poster') = 5, 'admin emailed for every new poster');
+  perform t.ok((select count(*) from email_queue where template in ('poster_live','poster_waiting') or template like 'admin_%') = 0, 'organisers see live/queued on screen; admin-only emails are not generated');
   perform t.as_user('orgA');
   perform t.fails($q$ select create_poster('Poster 1', ist_today()+1, null, 'Adyar', null, 'Arts', true, (select id::text from t.ids where name='orgA')||'/z.webp', (select id::text from t.ids where name='orgA')||'/zt.webp', 600, 800) $q$, 'already posted', 'duplicate (organiser + title + date) is blocked');
   perform t.fails($q$ select create_poster('Bad link', ist_today()+1, 'http://insecure.com', 'Adyar', null, 'Arts', true, (select id::text from t.ids where name='orgA')||'/y.webp', (select id::text from t.ids where name='orgA')||'/yt.webp', 600, 800) $q$, 'booking_url|check', 'non-https booking link is rejected');
@@ -183,7 +182,7 @@ begin
   perform t.fails($q$ select * from poster_daily_stats $q$, 'permission denied', 'anonymous cannot read analytics');
   reset role;
   perform t.as_anon(); perform report_poster(p, 'looks like a political rally'); reset role;
-  perform t.ok((select count(*) from reports) = 1 and (select count(*) from email_queue where template = 'admin_report') = 1, 'report stored and admin emailed');
+  perform t.ok((select count(*) from reports) = 1, 'report stored (shown in the admin console)');
 end $$;
 
 -- ---------------------------------------------------------------- admin stats / actions
@@ -202,6 +201,31 @@ begin
   perform t.ok((select count(*) from posters where organiser_id = (select id from t.ids where name='orgA') and status in ('live','waiting')) = 0, 'suspending an organiser takes their posters down');
   perform t.ok((select count(*) from email_queue where template = 'organiser_suspended') = 1, 'suspension email queued');
   perform t.as_user('orgA'); perform t.fails($q$ select create_poster('After suspend', ist_today()+9, null, 'Adyar', null, 'Arts', true, (select id::text from t.ids where name='orgA')||'/s.webp', (select id::text from t.ids where name='orgA')||'/st.webp', 600, 800) $q$, 'not approved', 'suspended organiser cannot post'); reset role;
+end $$;
+
+-- ---------------------------------------------------------------- outbox (emails sent by hand)
+do $$
+declare e uuid;
+begin
+  select id into e from email_queue where status = 'queued' limit 1;
+  perform t.as_user('orgB');
+  perform t.fails(format($q$ select admin_set_outbox(%L, 'sent') $q$, e), 'admins only', 'organiser cannot touch the outbox');
+  perform t.ok((select count(*) from email_queue) = 0, 'organiser cannot read the outbox');
+  reset role;
+  perform t.as_user('admin');
+  perform t.ok((select count(*) from email_queue where status = 'queued') = (admin_stats()->>'outbox')::int, 'dashboard outbox count matches queued emails');
+  perform admin_set_outbox(e, 'sent');
+  perform t.ok((select status = 'sent' and sent_at is not null from email_queue where id = e), 'admin can mark an email as sent by hand');
+  perform admin_set_outbox(e, 'queued');
+  perform t.ok((select status = 'queued' and sent_at is null from email_queue where id = e), '...and put it back');
+  reset role;
+end $$;
+
+-- ---------------------------------------------------------------- admin bootstrap
+do $$
+declare u uuid;
+begin
+  perform t.fails($q$ select bootstrap_admin('another@test.dev', 'x') $q$, 'admin already exists', 'bootstrap_admin refuses once an admin exists');
 end $$;
 
 -- ---------------------------------------------------------------- review flags

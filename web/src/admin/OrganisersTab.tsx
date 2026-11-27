@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { backend } from '../lib/backend'
 import { downloadCsv } from '../lib/csv'
 import type { OrganiserStatus, Profile } from '../lib/types'
+import CopyButton from '../components/CopyButton'
 
 const tone: Record<string, string> = { pending: 'bg-peach', approved: 'bg-[#cfe8c9] text-[#1f4d18]', rejected: 'bg-[#f6d8d2] text-[#6f2217]', suspended: 'bg-[#f6d8d2] text-[#6f2217]' }
 
@@ -33,6 +34,7 @@ export default function OrganisersTab() {
               <p className="text-sm">{r.email} · {r.poster_count ?? 0} posters</p>
               <p className="caption">Terms: {r.terms_version ?? 'not accepted'}{r.terms_accepted_at ? ` on ${r.terms_accepted_at.slice(0, 10)}` : ''}</p></div>
             <div className="flex gap-2 flex-wrap">
+              <LinkButton id={r.id} />
               {(r.status === 'pending') && <><button className={`${B} btn-primary`} onClick={() => set(r, 'approved')}>Approve</button><button className={`${B} btn-ghost`} onClick={() => set(r, 'rejected')}>Reject</button></>}
               {r.status === 'approved' && <button className={`${B} bg-[#8a2b1d] text-cream`} onClick={() => set(r, 'suspended')}>Suspend</button>}
               {(r.status === 'suspended' || r.status === 'rejected') && <button className={`${B} btn-secondary`} onClick={() => set(r, 'approved')}>{r.status === 'suspended' ? 'Reinstate' : 'Approve'}</button>}
@@ -42,4 +44,12 @@ export default function OrganisersTab() {
       {!shown.length && <p className="card p-5 text-center">No organisers match.</p>}
     </div>
   )
+}
+
+/** Makes a fresh personal sign-in link for this organiser (to paste into your own email or WhatsApp). */
+function LinkButton({ id }: { id: string }) {
+  const [url, setUrl] = useState(''); const [err, setErr] = useState('')
+  async function make() { setErr(''); try { setUrl(await backend.organiserLink(id)) } catch (x) { setErr((x as Error).message) } }
+  if (!url) return <><button className="btn !min-h-[44px] !px-4 btn-ghost" onClick={make}>Make sign-in link</button>{err && <span role="alert" className="text-[#8a2b1d] text-sm">{err}</span>}</>
+  return <span className="flex items-center gap-2 flex-wrap"><span className="text-xs break-all max-w-[16rem] rounded bg-brown/10 p-1 select-all" data-testid="org-link">{url}</span><CopyButton text={url} label="Copy link" /></span>
 }

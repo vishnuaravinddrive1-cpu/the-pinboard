@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../config'
 import { backend } from '../lib/backend'
 import { downloadCsv } from '../lib/csv'
-import type { EmailRow, LogEntry, Report, Settings } from '../lib/types'
+import type { LogEntry, Report, Settings } from '../lib/types'
 
 function useLoad<T>(fn: () => Promise<T>) {
   const [d, setD] = useState<T | null>(null); const [e, setE] = useState('')
@@ -19,22 +19,6 @@ export function LogTab() {
       {err && <p role="alert">{err}</p>}
       <ul className="space-y-2">{rows?.map((r) => (
         <li key={r.id} className="card px-3 py-2 text-sm"><span className="font-semibold">{r.action}</span> · {r.detail || '-'}<br /><span className="caption">{new Date(r.at).toLocaleString('en-IN', { timeZone: config.timezone })} · {r.actor}</span></li>))}</ul>
-    </div>
-  )
-}
-
-export function EmailsTab() {
-  const [rows, err] = useLoad<EmailRow[]>(() => backend.adminEmails())
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-2"><p className="caption">Send queue and history. Failed emails are retried automatically.</p>
-        <button className="btn-ghost" onClick={() => rows && downloadCsv('emails', rows as unknown as Record<string, unknown>[])}>Export CSV</button></div>
-      {err && <p role="alert">{err}</p>}
-      <ul className="space-y-2">{rows?.map((r) => (
-        <li key={r.id} className="card px-3 py-2 text-sm flex flex-wrap gap-x-3 items-center">
-          <span className={`chip ${r.status === 'sent' ? 'bg-[#cfe8c9]' : r.status === 'failed' ? 'bg-[#f6d8d2]' : 'bg-peach'}`}>{r.status}</span>
-          <span className="font-semibold">{r.template}</span><span className="break-all">{r.to}</span>
-          {r.error && <span className="text-[#6f2217] w-full">{r.error}</span>}</li>))}</ul>
     </div>
   )
 }

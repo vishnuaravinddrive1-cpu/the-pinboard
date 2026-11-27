@@ -2,10 +2,11 @@ name: Deploy Pin Board (database + Cloudflare)
 # Everything free: Neon (Postgres) + Cloudflare Workers (website, API, cron). Add the repository secrets below, then
 # push to the branch or press "Run workflow". Safe to run repeatedly (migrations are tracked).
 #
+# No email service is used: the admin sends the few emails by hand (Admin > Outbox).
 # Required secrets:  CLOUDFLARE_API_TOKEN   (template "Edit Cloudflare Workers")      CLOUDFLARE_ACCOUNT_ID
-#                    DATABASE_URL           (Neon connection string, pooled)          RESEND_API_KEY
-#                    TAKEDOWN_SECRET        (any long random string, 40+ characters)  BOOTSTRAP_ADMIN_EMAIL (your own email: first admin)
-# Optional secrets:  SITE_URL (https://pinboard.tcqindia.com or your workers.dev address), FROM_EMAIL, REPLY_TO,
+#                    DATABASE_URL           (Neon connection string)                  ADMIN_SETUP_KEY (any long random string, 40+ characters)
+#                    BOOTSTRAP_ADMIN_EMAIL  (your own email: the first admin)
+# Optional secrets:  SITE_URL (https://pinboard.tcqindia.com or your workers.dev address),
 #                    GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (to switch on "Continue with Google")
 on:
   push:
@@ -32,7 +33,7 @@ jobs:
       - name: Check secrets
         run: |
           missing=""
-          for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID DATABASE_URL RESEND_API_KEY TAKEDOWN_SECRET BOOTSTRAP_ADMIN_EMAIL; do
+          for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID DATABASE_URL ADMIN_SETUP_KEY BOOTSTRAP_ADMIN_EMAIL; do
             [ -n "$(printenv "S_$n")" ] || missing="$missing $n"
           done
           if [ -n "$missing" ]; then echo "::error::Missing repository secrets:$missing (Settings > Secrets and variables > Actions)"; exit 1; fi
@@ -40,8 +41,7 @@ jobs:
           S_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           S_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           S_DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          S_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          S_TAKEDOWN_SECRET: ${{ secrets.TAKEDOWN_SECRET }}
+          S_ADMIN_SETUP_KEY: ${{ secrets.ADMIN_SETUP_KEY }}
           S_BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL }}
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
@@ -62,17 +62,14 @@ jobs:
       - name: Set Worker secrets
         working-directory: api
         env:
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          TAKEDOWN_SECRET: ${{ secrets.TAKEDOWN_SECRET }}
+          ADMIN_SETUP_KEY: ${{ secrets.ADMIN_SETUP_KEY }}
           BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL }}
           SITE_URL: ${{ secrets.SITE_URL }}
-          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
-          REPLY_TO: ${{ secrets.REPLY_TO }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           node -e '
-            const names = ["DATABASE_URL","RESEND_API_KEY","TAKEDOWN_SECRET","BOOTSTRAP_ADMIN_EMAIL","SITE_URL","FROM_EMAIL","REPLY_TO","GOOGLE_CLIENT_ID","GOOGLE_CLIENT_SECRET"];
+            const names = ["DATABASE_URL","ADMIN_SETUP_KEY","BOOTSTRAP_ADMIN_EMAIL","SITE_URL","GOOGLE_CLIENT_ID","GOOGLE_CLIENT_SECRET"];
             const o = {}; for (const n of names) if (process.env[n]) o[n] = process.env[n];
             require("fs").writeFileSync("/tmp/secrets.json", JSON.stringify(o));'
           npx wrangler secret bulk /tmp/secrets.json --config ../wrangler.toml
@@ -83,4 +80,4 @@ jobs:
           echo "Deployed: ${url:-see the Cloudflare dashboard}"
           echo "### Pin Board is deployed" >> "$GITHUB_STEP_SUMMARY"
           echo "Address: ${url:-see Cloudflare dashboard > Workers & Pages > pinboard}" >> "$GITHUB_STEP_SUMMARY"
-          [ -n "${{ secrets.SITE_URL }}" ] || echo "Tip: add that address as the repository secret SITE_URL and run this workflow again, so emails and Google sign-in use it." >> "$GITHUB_STEP_SUMMARY"
+          [ -n "${{ secrets.SITE_URL }}" ] || echo "Tip: add that address as the repository secret SITE_URL and run this workflow again, so sign-in links in your emails and Google sign-in use it." >> "$GITHUB_STEP_SUMMARY"

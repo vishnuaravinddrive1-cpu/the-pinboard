@@ -1,7 +1,7 @@
 /** Talks to the Pin Board API (Cloudflare Worker) on the same origin. Session = HttpOnly cookie. */
 import { config } from '../config'
 import type {
-  Backend, EmailRow, LogEntry, NewPosterInput, Poster, PosterAction, Profile, PublicPoster, Report, SessionUser, Settings, Stats,
+  Backend, LogEntry, OutboxEmail, NewPosterInput, Poster, PosterAction, Profile, PublicPoster, Report, SessionUser, Settings, Stats,
 } from './types'
 
 async function call<T>(method: string, path: string, body?: unknown | FormData): Promise<T> {
@@ -36,8 +36,11 @@ export const apiBackend: Backend = {
 
   async getUser() { return (await get<{ user: SessionUser | null }>('/api/me')).user },
   onAuthChange(cb) { listeners.add(cb); return () => listeners.delete(cb) },
-  async requestCode(email, opts) { await post('/api/auth/request-code', { email, mode: opts.mode, name: opts.name, terms_version: opts.mode === 'signup' ? config.termsVersion : undefined }) },
-  async verifyCode(email, code) { await post('/api/auth/verify', { email, code }); notify() },
+  async requestAccess(email, name) { await post('/api/auth/signup', { email, name, terms_version: config.termsVersion }) },
+  async requestLink(email) { await post('/api/auth/request-link', { email }) },
+  async useLink(token) { await post('/api/auth/use-link', { token }); notify() },
+  async setupAdmin(key) { const r = await post<{ ok: true; link: string }>('/api/auth/setup', { key }); notify(); return { link: r.link } },
+  async myLink() { return (await post<{ url: string }>('/api/me/link')).url },
   async signInGoogle() { location.href = '/api/auth/google' },
   async authOptions() { const c = await get<{ google: boolean }>('/api/config'); return { google: c.google, demo: false } },
   async signOut() { await post('/api/auth/logout'); notify() },
@@ -63,7 +66,9 @@ export const apiBackend: Backend = {
   async setOrganiserStatus(id, status, reason) { await post(`/api/admin/organisers/${id}/status`, { status, reason }) },
   async posterAction(id, action: PosterAction, arg) { await post(`/api/admin/posters/${id}/action`, { action, arg }) },
   adminLogs: () => get<LogEntry[]>('/api/admin/logs'),
-  adminEmails: () => get<EmailRow[]>('/api/admin/emails'),
+  adminOutbox: (status) => get<OutboxEmail[]>(`/api/admin/outbox?status=${status}`),
+  async setOutboxStatus(id, status) { await post(`/api/admin/outbox/${id}`, { status }) },
+  async organiserLink(id) { return (await post<{ url: string }>(`/api/admin/organisers/${id}/link`)).url },
   adminReports: () => get<Report[]>('/api/admin/reports'),
   getSettings: () => get<Settings>('/api/settings'),
   async saveSettings(s) { await call('PUT', '/api/admin/settings', s) },

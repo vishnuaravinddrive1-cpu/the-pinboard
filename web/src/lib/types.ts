@@ -63,14 +63,16 @@ export interface LogEntry {
   detail: string
 }
 
-export interface EmailRow {
+/** An email the admin has to send by hand (the app never sends email). */
+export interface OutboxEmail {
   id: string
   to: string
   template: string
-  status: 'queued' | 'sent' | 'failed'
-  attempts: number
+  status: 'queued' | 'sent' | 'skipped'
   created_at: string
-  error?: string | null
+  sent_at?: string | null
+  subject: string
+  text: string
 }
 
 export interface Settings {
@@ -97,8 +99,7 @@ export interface Stats {
   topCategories: { category: string; count: number }[]
   daily: { day: string; views: number; clicks: number }[]
   storageMb: number
-  emailsToday: number
-  emailQuota: number
+  outbox: number
 }
 
 export interface SessionUser {
@@ -123,11 +124,19 @@ export interface Backend {
   // auth
   getUser(): Promise<SessionUser | null>
   onAuthChange(cb: () => void): () => void
-  /** Passwordless sign-in: an emailed 6-digit code (or Google). For sign-up, name and the accepted Terms version are required. */
-  requestCode(email: string, opts: { mode: 'login' | 'signup'; name?: string }): Promise<void>
-  verifyCode(email: string, code: string): Promise<void>
+  /** No passwords and no automatic email: organisers REQUEST ACCESS, the admin approves and emails a personal sign-in link. */
+  requestAccess(email: string, name: string): Promise<void>
+  /** "Lost your link?": asks for a new link (it appears in the admin's outbox). */
+  requestLink(email: string): Promise<void>
+  useLink(token: string): Promise<void>
+  /** First-time admin set-up with the secret key; returns the admin's personal sign-in link. */
+  setupAdmin(key: string): Promise<{ link: string }>
+  myLink(): Promise<string>
   signInGoogle(): Promise<void>
   authOptions(): Promise<{ google: boolean; demo: boolean }>
+  /** Demo mode only. */
+  demoAccounts?(): string[]
+  demoLogin?(email: string): Promise<void>
   signOut(): Promise<void>
   acceptTerms(): Promise<void>
   // organiser
@@ -143,7 +152,9 @@ export interface Backend {
   setOrganiserStatus(id: string, status: OrganiserStatus, reason?: string): Promise<void>
   posterAction(id: string, action: PosterAction, arg?: string): Promise<void>
   adminLogs(): Promise<LogEntry[]>
-  adminEmails(): Promise<EmailRow[]>
+  adminOutbox(status: 'queued' | 'sent' | 'skipped'): Promise<OutboxEmail[]>
+  setOutboxStatus(id: string, status: 'queued' | 'sent' | 'skipped'): Promise<void>
+  organiserLink(id: string): Promise<string>
   adminReports(): Promise<Report[]>
   getSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<void>

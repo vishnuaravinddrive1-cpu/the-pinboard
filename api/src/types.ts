@@ -6,13 +6,10 @@ export interface R2BucketLike {
 export interface Env {
   DATABASE_URL: string
   SITE_URL?: string                  // public address, e.g. https://pinboard.tcqindia.com (defaults to the request's own origin)
-  TAKEDOWN_SECRET: string
-  RESEND_API_KEY?: string
-  FROM_EMAIL?: string
-  REPLY_TO?: string
+  BOOTSTRAP_ADMIN_EMAIL?: string     // the admin's email (set-up key, or a verified Google sign-in with this email, creates the first admin)
+  ADMIN_SETUP_KEY?: string           // long random string; opens /organiser?setup=<key> while no admin exists
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
-  BOOTSTRAP_ADMIN_EMAIL?: string
   IMAGES?: R2BucketLike              // optional: Cloudflare R2. Without it, images live in Neon (table image_blobs).
   ASSETS?: { fetch(req: Request): Promise<Response> }
 }
@@ -26,13 +23,10 @@ export interface ImageStore {
 }
 export interface Config {
   siteUrl: string
-  takedownSecret: string
-  resendKey?: string
-  fromEmail: string
-  replyTo: string
+  setupKey?: string
+  bootstrapAdmin?: string
   googleId?: string
   googleSecret?: string
-  bootstrapAdmin?: string
 }
 export interface Deps {
   db: Db

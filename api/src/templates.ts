@@ -1,58 +1,86 @@
-// Email content. Plain, warm, short. All user-supplied text is HTML-escaped.
-export interface Ctx { siteUrl: string; takedownUrl: (posterId: string) => Promise<string>; adminEmail: string }
-export interface Rendered { subject: string; html: string }
+// Plain-text emails for the admin to send by hand. Warm, short. Every template returns a subject and a text body.
+export interface Rendered { subject: string; text: string }
+export interface Ctx { siteUrl: string }
 
-const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
-const BROWN = '#382525', RUST = '#A85A36', CREAM = '#FAF3E6'
+const SIGN_OFF = 'Warm regards,\nPin Board\nA free community service by The Curiosity Quotient\n\n(Reply to this email if you have any questions.)'
 
-function wrap(title: string, body: string): string {
-  return `<!doctype html><html><body style="margin:0;background:${CREAM};font-family:Outfit,Segoe UI,Helvetica,Arial,sans-serif;color:${BROWN}">
-<div style="max-width:520px;margin:0 auto;padding:24px">
-<p style="font-size:13px;color:${RUST};margin:0 0 4px">Pin Board · What's happening in Chennai</p>
-<h1 style="font-size:22px;margin:0 0 16px">${esc(title)}</h1>
-${body}
-<hr style="border:none;border-top:1px solid #d9cdb4;margin:24px 0 12px">
-<p style="font-size:12px;color:${RUST}">A free community service by The Curiosity Quotient. Questions? Just reply to this email.</p>
-</div></body></html>`
+const longDate = (d: string) => {
+  const [y, m, day] = String(d).split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
 }
-const p = (s: string) => `<p style="font-size:16px;line-height:1.5;margin:0 0 12px">${s}</p>`
-const btn = (href: string, label: string) => `<p style="margin:16px 0"><a href="${esc(href)}" style="background:${RUST};color:${CREAM};padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600;display:inline-block">${esc(label)}</a></p>`
-const date = (d: string) => { const [y, m, day] = String(d).split('-').map(Number); return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) }
+const clean = (s: unknown) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim()
+const hi = (name: unknown) => `Hi ${clean(name) || 'there'},`
+const body = (...paras: (string | false | null | undefined)[]) => paras.filter(Boolean).join('\n\n') + '\n\n' + SIGN_OFF
 
-export async function render(template: string, d: Record<string, any>, ctx: Ctx): Promise<Rendered> {
-  const board = `${ctx.siteUrl}/`
+export const TEMPLATE_INFO: Record<string, { label: string; when: string }> = {
+  organiser_approved: { label: 'Approval + sign-in link', when: 'You approved an organiser (or reinstated one).' },
+  organiser_rejected: { label: 'Not approved', when: 'You rejected an organiser.' },
+  organiser_suspended: { label: 'Account suspended', when: 'You suspended an organiser.' },
+  login_link: { label: 'New sign-in link', when: 'An approved organiser asked for a new sign-in link.' },
+  poster_promoted: { label: 'Poster moved off the queue', when: 'A waiting poster went live because a space opened.' },
+  event_reminder: { label: 'Event reminder', when: 'One day (or your chosen lead time) before an event date.' },
+  poster_out_of_scope: { label: 'Poster taken down (out of scope)', when: 'You used "Out of scope" on a poster.' },
+}
+
+export function render(template: string, d: Record<string, any>, ctx: Ctx): Rendered {
   switch (template) {
-    case 'login_code':
-      return { subject: `Your Pin Board code: ${d.code}`, html: wrap('Your sign-in code', p(`Use this code to ${d.signup ? 'finish signing up' : 'log in'}:`) + `<p style="font-size:34px;letter-spacing:6px;font-weight:700;margin:8px 0 16px">${esc(d.code)}</p>` + p('It works for 10 minutes. If you did not ask for it, you can ignore this email.')) }
     case 'organiser_approved':
-      return { subject: 'You are approved to post on Pin Board', html: wrap('You are approved', p(`Hi ${esc(d.name)}, welcome aboard! You can now post your event posters.`) + btn(`${ctx.siteUrl}/organiser`, 'Post a poster')) }
+      return {
+        subject: 'You are approved to post on Pin Board',
+        text: body(hi(d.name), 'Welcome aboard! Your Pin Board account has been approved, so you can now post your event posters.',
+          d.signin_url && `Use your personal sign-in link below. Open it once on each phone or computer you use; after that you stay signed in for about a month. Keep this email safe: anyone with the link can sign in as you.\n\nYour sign-in link:\n${d.signin_url}`,
+          `Pin Board is at ${ctx.siteUrl}`,
+          'A reminder of what we can post: events in or around Chennai that are experiences, arts, knowledge, discussion or social events. The full Terms are at ' + ctx.siteUrl + '/terms'),
+      }
     case 'organiser_rejected':
-      return { subject: 'About your Pin Board sign-up', html: wrap('Not approved this time', p(`Hi ${esc(d.name)}, thanks for signing up. We could not approve your account.`) + (d.reason ? p(`Reason: ${esc(d.reason)}`) : '') + p('If you think this is a mistake, reply to this email.')) }
+      return {
+        subject: 'About your Pin Board sign-up',
+        text: body(hi(d.name), 'Thank you for your interest in Pin Board. We are sorry: we could not approve your account this time.',
+          d.reason && `Reason: ${clean(d.reason)}`, 'If you think this is a mistake, just reply to this email and we will take another look.'),
+      }
     case 'organiser_suspended':
-      return { subject: 'Your Pin Board account is suspended', html: wrap('Account suspended', p(`Hi ${esc(d.name)}, your account has been suspended and your posters have been taken down.`) + (d.reason ? p(`Reason: ${esc(d.reason)}`) : '') + p('Reply to this email if you would like to talk about it.')) }
-    case 'poster_live':
-      return { subject: `Your poster is live: ${d.title}`, html: wrap('Your poster is on the board', p(`“${esc(d.title)}” is live and will stay up until the end of ${esc(date(d.event_date))}.`) + btn(`${ctx.siteUrl}/p/${d.poster_id}`, 'See it on the board')) }
-    case 'poster_waiting':
-      return { subject: `Your poster is in the queue: ${d.title}`, html: wrap('You are in the queue', p('The board is full right now. Your poster is in the queue and will go up as soon as a space opens.') + p(`“${esc(d.title)}” · queue position <strong>${esc(d.queue_position)}</strong>`)) }
+      return {
+        subject: 'Your Pin Board account is suspended',
+        text: body(hi(d.name), 'Your Pin Board account has been suspended and your posters have been taken down.',
+          d.reason && `Reason: ${clean(d.reason)}`, 'If you would like to talk about it, please reply to this email.'),
+      }
+    case 'login_link':
+      return {
+        subject: 'Your new Pin Board sign-in link',
+        text: body(hi(d.name), 'Here is a fresh personal sign-in link for Pin Board. Open it on the phone or computer you want to sign in on.',
+          `Your sign-in link:\n${d.signin_url}`, 'Keep it private: anyone with this link can sign in as you. If you did not ask for it, you can ignore this email.'),
+      }
     case 'poster_promoted':
-      return { subject: `Your poster is now live: ${d.title}`, html: wrap('A space opened up', p(`“${esc(d.title)}” has moved from the queue onto the board.`) + btn(`${ctx.siteUrl}/p/${d.poster_id}`, 'See it on the board')) }
+      return {
+        subject: `Your poster is now live: ${clean(d.title)}`,
+        text: body(hi(d.name), `Good news: a space opened up and "${clean(d.title)}" has moved from the queue onto the board.`,
+          `It will stay up until the end of ${longDate(d.event_date)}.`, `See it here: ${ctx.siteUrl}/p/${d.poster_id}`),
+      }
     case 'event_reminder':
-      return { subject: `Reminder: ${d.title} is on ${date(d.event_date)}`, html: wrap('Your event is coming up', p(`“${esc(d.title)}” is on ${esc(date(d.event_date))}. Your poster stays on the board until the end of that day.`) + btn(board, 'Open Pin Board')) }
+      return {
+        subject: `Reminder: ${clean(d.title)} is on ${longDate(d.event_date)}`,
+        text: body(hi(d.name), `A quick reminder that "${clean(d.title)}" is on ${longDate(d.event_date)}.`,
+          'Your poster stays on the board until the end of that day. We hope it goes wonderfully!', `Pin Board: ${ctx.siteUrl}`),
+      }
     case 'poster_out_of_scope':
-      return { subject: `We took down your poster: ${d.title}`, html: wrap('Poster taken down', p(`“${esc(d.title)}” was taken down because it is outside what Pin Board is for (Terms section 3.1).`) + p(`Reason: ${esc(d.reason)}`) + p('Events must be in or around Chennai and be experience, arts, knowledge, discussion or social events. Reply if you would like us to take another look.')) }
-    case 'admin_new_poster': {
-      const link = await ctx.takedownUrl(d.poster_id)
-      return { subject: `New poster: ${d.title}`, html: wrap('New poster posted', p(`<strong>${esc(d.title)}</strong><br>${esc(date(d.event_date))}<br>By ${esc(d.organiser)} (${esc(d.organiser_email)}) · ${esc(d.status)}`) + btn(`${ctx.siteUrl}/admin`, 'Open admin') + p(`<a href="${esc(link)}" style="color:#8a2b1d;font-weight:600">One-click take-down</a>`)) }
-    }
-    case 'admin_new_organiser':
-      return { subject: `New organiser awaiting approval: ${d.name}`, html: wrap('Organiser awaiting approval', p(`${esc(d.name)} (${esc(d.email)}) has signed up.`) + btn(`${ctx.siteUrl}/admin`, 'Review in admin')) }
-    case 'admin_report': {
-      const link = await ctx.takedownUrl(d.poster_id)
-      return { subject: `Poster reported: ${d.title}`, html: wrap('A poster was reported', p(`<strong>${esc(d.title)}</strong><br>Reason: ${esc(d.reason)}`) + btn(`${ctx.siteUrl}/admin`, 'Open admin') + p(`<a href="${esc(link)}" style="color:#8a2b1d;font-weight:600">One-click take-down</a>`)) }
-    }
-    case 'admin_quota_warning':
-      return { subject: 'Pin Board: email quota almost used up today', html: wrap('Email quota warning', p(`${esc(d.sent)} of ${esc(d.quota)} emails have been sent today. Remaining emails will wait in the queue and go out tomorrow.`)) }
+      return {
+        subject: `We took down your poster: ${clean(d.title)}`,
+        text: body(hi(d.name), `We have taken down "${clean(d.title)}" because it is outside what Pin Board is for (Terms section 3.1).`,
+          `Reason: ${clean(d.reason)}`, 'Pin Board is for events in or around Chennai that are experience, arts, knowledge, discussion or social events. Political events are welcome only if they are neutral and meant to share knowledge.',
+          'If you would like us to take another look, just reply to this email.'),
+      }
     default:
-      return { subject: 'Pin Board', html: wrap('Pin Board', p(esc(template))) }
+      return { subject: 'Pin Board', text: body(hi(d.name), clean(template)) }
   }
+}
+
+/** Fills the names in payloads that only carry an email, so every message can start with "Hi <name>,". */
+export const SAMPLE: Record<string, Record<string, unknown>> = {
+  organiser_approved: { name: 'Meera', signin_url: 'https://pinboard.tcqindia.com/organiser?link=EXAMPLE-PERSONAL-TOKEN' },
+  organiser_rejected: { name: 'Meera', reason: 'We could not tell what kind of events you plan to post.' },
+  organiser_suspended: { name: 'Meera', reason: 'Repeated posters that were outside Chennai.' },
+  login_link: { name: 'Meera', signin_url: 'https://pinboard.tcqindia.com/organiser?link=EXAMPLE-NEW-TOKEN' },
+  poster_promoted: { name: 'Meera', title: 'Filter Coffee & Poetry Evening', event_date: '2026-12-05', poster_id: '00000000-0000-0000-0000-000000000000' },
+  event_reminder: { name: 'Meera', title: 'Filter Coffee & Poetry Evening', event_date: '2026-12-05' },
+  poster_out_of_scope: { name: 'Meera', title: 'Weekend Rally', reason: 'Out of scope (Terms 3.1): a political rally.' },
 }

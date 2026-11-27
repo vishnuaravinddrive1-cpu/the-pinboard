@@ -16,22 +16,22 @@ export async function openBoard(page: Page, path = '/') {
   await page.goto(path)
   await expect(page.getByTestId('poster').first()).toBeVisible()
 }
-/** Reads the sign-in code: in the full-stack test server it comes from the fake mailbox, in demo mode it is always 123456. */
-export async function codeFor(page: Page, email: string): Promise<string> {
-  try {
-    const r = await page.request.get('/__test/code?email=' + encodeURIComponent(email))
-    if ((r.headers()['content-type'] ?? '').includes('json')) { const j = await r.json(); if (j.code) return j.code }
-  } catch { /* demo mode */ }
-  return '123456'
-}
-export async function login(page: Page, email: string, area: 'organiser' | 'admin') {
+/**
+ * Signs in. Demo mode: presses the demo account button. Full-stack test server: asks the test-only endpoint for the account's
+ * personal sign-in link (what the admin's email would contain) and opens it.
+ */
+export async function login(page: Page, email: string, area: 'organiser' | 'admin', opts: { approve?: boolean } = {}) {
   await stubExternal(page)
+  const r = await page.request.get(`/__test/link?email=${encodeURIComponent(email)}${opts.approve === false ? '' : '&approve=1'}`)
+  if ((r.headers()['content-type'] ?? '').includes('json')) {
+    const { url } = await r.json()
+    await page.goto(new URL(url).pathname + new URL(url).search)
+    await page.getByRole('button', { name: 'Log out' }).waitFor()          // the link has signed us in
+    if (area === 'admin') await page.goto('/admin')
+    return
+  }
   await page.goto('/' + area)
-  await page.getByLabel('Email').fill(email)
-  await page.getByRole('button', { name: 'Send me a code' }).click()
-  await page.getByLabel('6-digit code').waitFor()
-  await page.getByLabel('6-digit code').fill(await codeFor(page, email))
-  await page.getByRole('button', { name: 'Log in', exact: true }).last().click()
+  await page.getByRole('button', { name: 'Demo: ' + email }).click()
 }
 export const noHScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && document.body.scrollWidth <= window.innerWidth + 1)
 

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { codeFor, fixture, login, noHScroll, openBoard, stubExternal } from './helpers'
+import { fixture, login, noHScroll, openBoard, stubExternal } from './helpers'
 import { statSync } from 'node:fs'
 
 const dayOffset = (n: number) => new Date(Date.now() + n * 864e5 + 5.5 * 36e5).toISOString().slice(0, 10)
@@ -18,22 +18,32 @@ async function fillForm(page: Page, title: string, opts: { url?: string; date?: 
 }
 
 test.describe('organiser area', () => {
-  test('sign-up needs the Terms tick, then the account is Pending approval and cannot post', async ({ page }) => {
+  test('request access: needs the Terms tick; creates a pending account; nobody is logged in', async ({ page }) => {
     await stubExternal(page); await page.goto('/organiser')
-    await page.getByRole('tab', { name: 'Sign up' }).click()
+    await expect(page.getByText('personal sign-in link').first()).toBeVisible()
+    await page.getByRole('tab', { name: 'Request access' }).click()
     await page.getByLabel('Your name or group').fill('Chennai Readers')
     await page.getByLabel('Email').fill('readers@example.org')
-    await page.getByRole('button', { name: 'Send me a code' }).click()
+    await page.getByRole('button', { name: 'Request access' }).click()
     await expect(page.getByRole('alert')).toContainText('accept the Terms')
     await page.getByRole('checkbox').check()
-    await page.getByRole('button', { name: 'Send me a code' }).click()
-    await page.getByLabel('6-digit code').fill('000001')
-    await page.getByRole('button', { name: 'Create account' }).click()
-    await expect(page.getByRole('alert')).toContainText(/not right|expired/)
-    await page.getByLabel('6-digit code').fill(await codeFor(page, 'readers@example.org'))
-    await page.getByRole('button', { name: 'Create account' }).click()
-    await expect(page.getByRole('heading', { name: 'Pending approval' })).toBeVisible()
+    await page.getByRole('button', { name: 'Request access' }).click()
+    await expect(page.getByRole('status')).toContainText('Thank you')
     await expect(page.getByRole('button', { name: '+ New poster' })).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: 'Log in' })).toBeVisible()            // still signed out
+  })
+
+  test('"Lost your link?" asks for a new one without revealing whether the email exists', async ({ page }) => {
+    await stubExternal(page); await page.goto('/organiser')
+    await page.getByRole('button', { name: 'Lost your link?' }).click()
+    await page.getByLabel('Your email').fill('nobody@example.org'); await page.getByRole('button', { name: 'Ask for a new link' }).click()
+    await expect(page.getByRole('status')).toContainText('If that email belongs to an approved organiser')
+  })
+
+  test('"My sign-in link" gives a link for another device', async ({ page }) => {
+    await login(page, 'organiser@demo.test', 'organiser')
+    await page.getByRole('button', { name: 'My sign-in link' }).click()
+    await expect(page.getByTestId('my-link')).toContainText('/organiser?link=')
   })
 
   test('suspended organiser sees the suspension notice', async ({ page }) => {
@@ -55,7 +65,7 @@ test.describe('organiser area', () => {
     await page.goto('/')
     await page.evaluate(() => localStorage.setItem('pinboard.hint.v1', '1'))
     await expect(page.locator('[data-testid=poster][aria-label^="Quiet Reading Room Evening"]')).toHaveCount(1)
-    await page.goto('/p/' + (await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v2')!).posters.find((p: any) => p.title === 'Quiet Reading Room Evening').id)))
+    await page.goto('/p/' + (await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v3')!).posters.find((p: any) => p.title === 'Quiet Reading Room Evening').id)))
     await expect(page.getByRole('dialog')).toContainText('Quiet Reading Room Evening')
     await expect(page.getByRole('button', { name: 'Book now' })).toHaveCount(0)
   })
@@ -119,7 +129,7 @@ test.describe('organiser area', () => {
   test('board full: poster is queued with a position and the clear message', async ({ page }) => {
     await login(page, 'admin@demo.test', 'admin')
     await page.getByRole('tab', { name: 'Settings' }).click()
-    const live = Number((await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v2')!).posters.filter((p: any) => p.status === 'live').length)))
+    const live = Number((await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v3')!).posters.filter((p: any) => p.status === 'live').length)))
     await page.getByLabel('Board limit (live posters)').fill(String(live)); await page.getByRole('button', { name: 'Save settings' }).click()
     await expect(page.getByText('Saved.')).toBeVisible()
     await page.goto('/organiser'); await page.getByRole('button', { name: 'Log out' }).click()

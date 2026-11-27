@@ -1,13 +1,11 @@
 import { asOwner, q } from './db.ts'
-import { drainEmails } from './email.ts'
 import type { Deps } from './types.ts'
 
-/** 00:00 IST: archive expired posters, promote the queue, queue reminders, then housekeeping. */
+/** 00:00 IST: archive expired posters, promote the queue, queue reminder emails (into the admin's outbox), then housekeeping. */
 export async function nightly(d: Deps) {
-  await asOwner(d.db, q('select nightly_job()'), q('delete from login_codes where expires_at < now() - interval \'1 day\''), q('delete from sessions where expires_at < now()'))
+  await asOwner(d.db, q('select nightly_job()'), q('delete from access_links where expires_at < now() - interval \'30 days\''), q('delete from sessions where expires_at < now()'))
   const retention = await runRetention(d)
-  const mail = await drainEmails(d, 20)
-  return { retention, mail }
+  return { retention }
 }
 
 /** Delete image files of posters past the retention period, anonymise those records, and empty the purge queue. */

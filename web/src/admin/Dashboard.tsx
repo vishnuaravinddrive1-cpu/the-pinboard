@@ -35,10 +35,17 @@ export default function Dashboard() {
   useEffect(() => { backend.adminStats().then(setS).catch((e) => setErr(e.message)) }, [])
   if (err) return <p role="alert" className="text-[#8a2b1d]">{err}</p>
   if (!s) return <p role="status">Loading…</p>
-  const quotaNear = s.emailsToday >= s.emailQuota * 0.8
   return (
     <div className="space-y-5">
-      {quotaNear && <p role="alert" className="rounded-xl bg-[#f6d8d2] text-[#6f2217] font-semibold p-3">Email quota warning: {s.emailsToday} of {s.emailQuota} emails used today.</p>}
+      {(s.outbox > 0 || s.pending > 0) && (
+        <div className="rounded-2xl bg-peach/60 p-4 border border-brown/10" role="status" data-testid="attention">
+          <h3 className="font-bold mb-1">Needs your attention</h3>
+          <ul className="list-disc pl-5 text-[15px]">
+            {s.pending > 0 && <li>{s.pending} organiser{s.pending > 1 ? 's' : ''} waiting for approval (Organisers tab)</li>}
+            {s.outbox > 0 && <li>{s.outbox} email{s.outbox > 1 ? 's' : ''} to send by hand (Outbox tab)</li>}
+          </ul>
+        </div>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card label="Live posters" value={`${s.live} of ${s.limit}`} />
         <Card label="Waiting queue" value={s.waiting} />
@@ -47,7 +54,7 @@ export default function Dashboard() {
         <Card label="Total views" value={s.views.toLocaleString()} />
         <Card label="Booking clicks" value={s.clicks.toLocaleString()} />
         <Card label="Storage used" value={`${s.storageMb} MB`} sub="of 1 GB free" />
-        <Card label="Emails today" value={`${s.emailsToday}/${s.emailQuota}`} />
+        <Card label="Emails to send" value={s.outbox} tone={s.outbox ? '!bg-peach' : ''} sub="see the Outbox tab" />
       </div>
       <div className="grid md:grid-cols-2 gap-5">
         <div className="rounded-2xl bg-white p-4 border border-brown/10">

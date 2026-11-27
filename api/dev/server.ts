@@ -1,4 +1,4 @@
-// Local full-stack server for browser tests: the built website + the API on a local Postgres, with a fake Resend.
+// Local full-stack server for browser tests: the built website + the API on a local Postgres.
 import { serve } from '@hono/node-server'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
@@ -16,18 +16,19 @@ const assets = {
     return new Response('not found', { status: 404 })
   },
 }
-let flush: () => Promise<void> = async () => {}
-let mailList: { to: string[]; subject: string }[] = []
+const setupKey = 'e2e-setup-key-0123456789-abcdefghijklmnop'
 const h = makeHarness(process.env.DATABASE_URL!, {
-  siteUrl: `http://127.0.0.1:${port}`, bootstrapAdmin: process.env.BOOTSTRAP_ADMIN_EMAIL, assets,
+  siteUrl: `http://127.0.0.1:${port}`, setupKey, bootstrapAdmin: process.env.BOOTSTRAP_ADMIN_EMAIL, assets,
   extend: (app) => {
-    app.get('/__test/mails', async (c) => { await flush(); return c.json(mailList.map((m) => ({ to: m.to[0], subject: m.subject }))) })
-    app.get('/__test/code', async (c) => {
-      await flush()
-      const m = [...mailList].reverse().find((x) => x.to[0] === c.req.query('email') && /^Your Pin Board code: \d{6}$/.test(x.subject))
-      return c.json({ code: m?.subject.slice(-6) ?? null })
+    // Test-only: make sure an account exists (optionally approved) and return its personal sign-in link, like the admin's email would.
+    app.get('/__test/link', async (c) => {
+      const email = (c.req.query('email') ?? '').toLowerCase(), name = c.req.query('name') ?? email.split('@')[0]
+      const [[u]] = await h.db.tx([{ text: 'select register_user($1, $2, $3, null) as id', params: [email, name, '0.1'] }])
+      if (c.req.query('approve') === '1') await h.db.tx([{ text: "update profiles set status = 'approved' where id = $1 and role = 'organiser'", params: [u.id] }])
+      const { createAccessLink } = await import('../src/auth.ts')
+      return c.json({ url: await createAccessLink(h.deps, u.id) })
     })
+    app.get('/__test/setup-key', (c) => c.json({ key: setupKey }))
   },
 })
-flush = h.flush; mailList = h.mails
 serve({ fetch: h.app.fetch, port, hostname: '127.0.0.1' }, () => console.log(`pinboard test server on http://127.0.0.1:${port}`))

@@ -7,7 +7,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "dev:server": "node --import tsx dev/server.ts",
-    "migrate": "node ../db/migrate.mjs"
+    "migrate": "node ../db/migrate.mjs",
+    "emails:doc": "node --import tsx scripts/render-emails.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.1",

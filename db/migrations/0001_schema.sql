@@ -36,7 +36,7 @@ create table settings (
 insert into settings default values;
 
 -- ---------------------------------------------------------------- profiles
--- Sign-in: passwordless. One-time codes by email, or Google. Only the API (owner role) can read these three tables.
+-- Sign-in: no passwords. Personal sign-in links (sent by the admin) or Google. Only the API (owner role) can read these tables.
 create table users (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
@@ -49,18 +49,16 @@ create table sessions (
   expires_at timestamptz not null
 );
 create index sessions_user on sessions (user_id);
-create table login_codes (
-  id uuid primary key default gen_random_uuid(),
-  email text not null,
-  code_hash text not null,
-  name text,
-  terms_version text,
-  attempts int not null default 0,
-  used boolean not null default false,
+-- Personal sign-in links. The admin emails one to each approved organiser; the link signs them in on any device until it
+-- expires or is revoked. Only a hash of the token is stored.
+create table access_links (
+  token_hash text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  created_at timestamptz not null default now(),
   expires_at timestamptz not null,
-  created_at timestamptz not null default now()
+  revoked boolean not null default false
 );
-create index login_codes_email on login_codes (email, created_at desc);
+create index access_links_user on access_links (user_id, created_at desc);
 
 create table profiles (
   id                uuid primary key references users(id) on delete cascade,
@@ -141,20 +139,19 @@ create table activity_log (
 );
 create index activity_log_at on activity_log (at desc);
 
+-- The admin's OUTBOX: emails that need to be sent by hand. The app writes who, what and the facts; the API turns each row
+-- into a ready-to-send subject and text. Nothing is ever sent automatically.
 create table email_queue (
   id uuid primary key default gen_random_uuid(),
   to_email text not null,
   template text not null,
   payload jsonb not null default '{}',
-  status text not null default 'queued' check (status in ('queued','sending','sent','failed','dead')),
-  attempts int not null default 0,
-  next_attempt_at timestamptz not null default now(),
-  last_error text,
+  status text not null default 'queued' check (status in ('queued','sent','skipped')),
   dedupe_key text unique,
   created_at timestamptz not null default now(),
   sent_at timestamptz
 );
-create index email_queue_due on email_queue (next_attempt_at) where status in ('queued','failed');
+create index email_queue_status on email_queue (status, created_at);
 
 create table purge_queue (path text primary key, created_at timestamptz not null default now());
 
@@ -218,7 +215,7 @@ declare r record; n int := 0; lead int;
 begin
   select reminder_days into lead from settings where id = 1;
   for r in select * from posters where status = 'live' and not reminder_sent and event_date = ist_today() + lead loop
-    perform enqueue_email(r.organiser_email, 'event_reminder', jsonb_build_object('title', r.title, 'event_date', r.event_date, 'poster_id', r.id), 'reminder-' || r.id);
+    perform enqueue_email(r.organiser_email, 'event_reminder', jsonb_build_object('name', r.organiser_name, 'title', r.title, 'event_date', r.event_date, 'poster_id', r.id), 'reminder-' || r.id);
     update posters set reminder_sent = true where id = r.id;
     n := n + 1;
   end loop;
@@ -238,7 +235,7 @@ begin
   end if;
   if new.status = old.status then return new; end if;
   if old.status = 'waiting' and new.status = 'live' then
-    perform enqueue_email(new.organiser_email, 'poster_promoted', jsonb_build_object('title', new.title, 'event_date', new.event_date, 'poster_id', new.id));
+    perform enqueue_email(new.organiser_email, 'poster_promoted', jsonb_build_object('name', new.organiser_name, 'title', new.title, 'event_date', new.event_date, 'poster_id', new.id));
     perform log_event('system', 'queue_promoted', new.title);
   end if;
   if old.status = 'live' and new.status <> 'live' then
@@ -309,7 +306,6 @@ begin
     perform log_event(em, 'terms_accepted', 'version ' || accepted);
   end if;
   perform log_event(em, 'signup', case when isadm then 'bootstrap admin' else 'awaiting approval' end);
-  if not isadm then perform enqueue_email(admin_email(), 'admin_new_organiser', jsonb_build_object('name', nm, 'email', em)); end if;
   return uid;
 end $$;
 
@@ -363,10 +359,6 @@ begin
   end;
   select count(*) into pos from posters where posters.status = 'waiting' and queued_at <= (select queued_at from posters where posters.id = pid);
   perform log_event(me.email, case when st = 'live' then 'poster_posted' else 'poster_queued' end, p_title);
-  perform enqueue_email(me.email, case when st = 'live' then 'poster_live' else 'poster_waiting' end,
-    jsonb_build_object('title', p_title, 'event_date', p_event_date, 'poster_id', pid, 'queue_position', case when st = 'waiting' then pos end));
-  perform enqueue_email(s.admin_email, 'admin_new_poster',
-    jsonb_build_object('title', p_title, 'event_date', p_event_date, 'poster_id', pid, 'organiser', me.display_name, 'organiser_email', me.email, 'status', st));
   return query select pid, st, case when st = 'waiting' then pos end;
 end $$;
 
@@ -416,11 +408,30 @@ begin
   if t is null then raise exception 'Poster not found.'; end if;
   insert into reports (poster_id, reason) values (p_id, left(regexp_replace(p_reason, '[<>]', '', 'g'), 500));
   perform log_event('viewer', 'reported', t);
-  perform enqueue_email(admin_email(), 'admin_report', jsonb_build_object('title', t, 'poster_id', p_id, 'reason', left(p_reason, 500)));
 end $$;
 
 -- ---------------------------------------------------------------- admin RPCs
-create function admin_set_organiser_status(p_id uuid, p_status organiser_status, p_reason text default null)
+-- Mark an outbox email as sent by hand (or skipped, or put back to 'queued').
+create function admin_set_outbox(p_id uuid, p_status text) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Admins only.'; end if;
+  if p_status not in ('queued', 'sent', 'skipped') then raise exception 'Unknown status.'; end if;
+  update email_queue set status = p_status, sent_at = case when p_status = 'sent' then now() end where id = p_id;
+  if not found then raise exception 'Email not found.'; end if;
+end $$;
+
+-- First-time admin set-up (API only): works only while NO admin exists yet.
+create function bootstrap_admin(p_email text, p_name text) returns uuid language plpgsql security definer set search_path = public as $$
+declare uid uuid; em text := lower(trim(p_email));
+begin
+  if exists (select 1 from profiles where role = 'admin') then raise exception 'An admin already exists.'; end if;
+  uid := register_user(em, p_name, null, null);
+  update profiles set role = 'admin', status = 'approved' where id = uid;
+  perform log_event(em, 'admin_bootstrap', 'first admin created');
+  return uid;
+end $$;
+
+create function admin_set_organiser_status(p_id uuid, p_status organiser_status, p_reason text default null, p_extra jsonb default '{}')
 returns void language plpgsql security definer set search_path = public as $$
 declare p profiles;
 begin
@@ -428,7 +439,9 @@ begin
   update profiles set status = p_status where id = p_id and role = 'organiser' returning * into p;
   if not found then raise exception 'Organiser not found.'; end if;
   perform log_event((select email from profiles where id = app_uid()), 'organiser_' || p_status, p.email || coalesce(' - ' || p_reason, ''));
-  perform enqueue_email(p.email, 'organiser_' || p_status, jsonb_build_object('name', p.display_name, 'reason', p_reason));
+  if p_status in ('approved', 'rejected', 'suspended') then
+    perform enqueue_email(p.email, 'organiser_' || p_status, jsonb_build_object('name', p.display_name, 'reason', p_reason) || coalesce(p_extra, '{}'));
+  end if;
   if p_status = 'suspended' then
     update posters set status = 'taken_down', taken_down_reason = 'Organiser suspended' where organiser_id = p_id and status in ('live', 'waiting');
   end if;
@@ -449,7 +462,7 @@ begin
       update posters set status = 'taken_down', taken_down_reason = coalesce(nullif(p_arg,''), 'Taken down by admin') where id = p_id;
     when 'out_of_scope' then
       update posters set status = 'taken_down', taken_down_reason = coalesce(nullif(p_arg,''), 'Out of scope (Terms 3.1)') where id = p_id;
-      perform enqueue_email(p.organiser_email, 'poster_out_of_scope', jsonb_build_object('title', p.title, 'reason', coalesce(nullif(p_arg,''), 'Out of scope (Terms 3.1)')));
+      perform enqueue_email(p.organiser_email, 'poster_out_of_scope', jsonb_build_object('name', p.organiser_name, 'title', p.title, 'reason', coalesce(nullif(p_arg,''), 'Out of scope (Terms 3.1)')));
     when 'restore' then
       if p.event_date < ist_today() then raise exception 'The event date has passed. Extend it first.'; end if;
       select min(queued_at) into minq from posters where status = 'waiting';
@@ -504,8 +517,7 @@ begin
         generate_series(ist_today() - 13, ist_today(), '1 day') d
         left join (select day, sum(views) v, sum(clicks) c from poster_daily_stats group by day) s on s.day = d::date),
     'storageMb', round(coalesce((select sum(image_bytes + thumb_bytes) from posters where anonymised_at is null), 0) / 1048576.0, 2),
-    'emailsToday', (select count(*) from email_queue where status = 'sent' and (sent_at at time zone 'Asia/Kolkata')::date = ist_today()),
-    'emailQuota', 100
+    'outbox', (select count(*) from email_queue where status = 'queued')
   ) into r;
   return r;
 end $$;
@@ -573,7 +585,7 @@ alter table purge_queue enable row level security;
 alter table image_blobs enable row level security;
 alter table users enable row level security;
 alter table sessions enable row level security;
-alter table login_codes enable row level security;
+alter table access_links enable row level security;
 
 create policy settings_read on settings for select to authenticated using (true);
 create policy settings_admin_write on settings for update to authenticated using (is_admin()) with check (is_admin());
@@ -593,8 +605,8 @@ create policy stats_admin on poster_daily_stats for select to authenticated usin
 create policy reports_admin on reports for select to authenticated using (is_admin());
 create policy reports_admin_update on reports for update to authenticated using (is_admin()) with check (is_admin());
 create policy log_admin on activity_log for select to authenticated using (is_admin());
-create policy email_admin on email_queue for select to authenticated using (is_admin());
--- rate_limits, purge_queue, users, sessions, login_codes: no policies and no grants = no client access at all.
+create policy email_admin on email_queue for select to authenticated using (is_admin());   -- changes go through admin_set_outbox()
+-- rate_limits, purge_queue, users, sessions, access_links: no policies and no grants = no client access at all.
 
 -- ---------------------------------------------------------------- grants
 revoke all on all tables in schema public from anon, authenticated;
@@ -610,7 +622,8 @@ grant update (status) on profiles to authenticated;
 grant delete on posters to authenticated;
 grant execute on function record_view(uuid), record_click(uuid), report_poster(uuid, text) to anon, authenticated;
 grant execute on function app_uid() to anon, authenticated;
+grant execute on function admin_set_outbox(uuid, text) to authenticated;
 grant execute on function accept_terms(text), create_poster(text, date, text, text, text, text, boolean, text, text, int, int, int, int), delete_poster(uuid),
-  admin_set_organiser_status(uuid, organiser_status, text), admin_poster_action(uuid, text, text), admin_stats(),
+  admin_set_organiser_status(uuid, organiser_status, text, jsonb), admin_poster_action(uuid, text, text), admin_stats(),
   is_admin(), is_approved(), ist_today() to authenticated;
 grant execute on function ist_today() to anon;

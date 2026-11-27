@@ -93,14 +93,14 @@ test.describe('viewer board', () => {
   test('Book now button opens the link and counts a click', async ({ page }) => {
     await openBoard(page, '/p/demo-002')
     await Promise.all([newTab(page), page.getByRole('button', { name: 'Book now' }).click()])
-    const clicks = await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v2')!).posters.find((p: any) => p.id === 'demo-002').clicks)
+    const clicks = await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v3')!).posters.find((p: any) => p.id === 'demo-002').clicks)
     expect(clicks).toBe(3 + 1 * 2 + 1)
   })
 
   test('opening a poster counts one view', async ({ page }) => {
     await openBoard(page, '/p/demo-005')
     await expect(page.getByRole('dialog')).toBeVisible()
-    const v = await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v2')!).posters.find((p: any) => p.id === 'demo-005').views)
+    const v = await page.evaluate(() => JSON.parse(localStorage.getItem('pinboard.demo.v3')!).posters.find((p: any) => p.id === 'demo-005').views)
     expect(v).toBe(20 + 4 * 7 + 1)
   })
 
