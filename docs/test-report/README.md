@@ -7,7 +7,7 @@ Browser tests run against the production build in **demo mode** (data in the bro
 |---|---|
 | Database tests (`db/tests/tests.sql`): RLS, roles, cap, queue, expiry, reminders, analytics, retention | **72 checks passed** |
 | 100-cap with the real default limit (seed 20 + 90 filler) | 100 live, rest waiting, public view returns exactly 100 |
-| API tests (`api/test`): sign-in codes, sessions, CSRF, roles, uploads, queue, emails, take-down link, Terms | **23 passed**, on a real Postgres with a fake Resend |
+| API tests (`api/test`): sign-in codes, sessions, CSRF, roles, uploads, queue, emails, take-down link, Terms | **24 passed**, on a real Postgres with a fake Resend |
 | Browser tests, demo mode (viewer, organiser, admin, layouts, fonts) × iPhone-, Pixel-sized, desktop | **127 passed, 8 skipped** (hover/keyboard on touch, phone-only checks on desktop) |
 | Browser tests, **full stack** (real API + Postgres, no demo data) | **8 passed on desktop, 8 on Pixel-sized** |
 | Worker under Cloudflare's runtime (workerd, `wrangler dev`) | single-page fallback, `/api` and `/img` routed to the Worker, security headers, CSRF verified |

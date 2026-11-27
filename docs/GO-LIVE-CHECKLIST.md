@@ -1,6 +1,6 @@
 # Go-live checklist (Neon + Cloudflare + Resend)
 
-Do A → B → C → D in order. If a step fails, send me the exact error text or a screenshot (for GitHub, the failing step's log).
+This checklist puts Pin Board on a **temporary workers.dev address** first; moving to pinboard.tcqindia.com later is covered in `docs/MOVE-TO-TCQ-DOMAIN.md`. Do A → B → C → D in order. If a step fails, send me the exact error text or a screenshot (for GitHub, the failing step's log).
 Free accounts needed: GitHub (done), Neon, Cloudflare, Resend.
 
 ## A. Neon (database)

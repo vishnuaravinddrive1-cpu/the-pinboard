@@ -86,6 +86,16 @@ describe('sign-in (email codes)', () => {
   })
 })
 
+describe('temporary address', () => {
+  it('pages served from *.workers.dev carry noindex; other hosts do not', async () => {
+    const assets = { fetch: async () => new Response('<html></html>', { headers: { 'content-type': 'text/html' } }) }
+    const t = makeHarness(process.env.TEST_DATABASE_URL!, { assets })
+    const dummy = await t.app.request('https://pinboard.example.workers.dev/organiser'); assert.equal(dummy.headers.get('x-robots-tag'), 'noindex, nofollow')
+    const real = await t.app.request('https://pinboard.tcqindia.com/organiser'); assert.equal(real.headers.get('x-robots-tag'), null)
+    await (t.db as any).end()
+  })
+})
+
 describe('roles and access', () => {
   it('anonymous: protected endpoints answer 401', async () => {
     for (const p of ['/api/my/posters', '/api/admin/stats', '/api/settings']) assert.equal((await anon.get(p)).status, 401, p)

@@ -28,6 +28,7 @@ Without the API, the site runs in **demo mode**: 22 sample posters, and upload /
 On the live site the browser asks `/api/config`; if the API answers it is used, otherwise demo mode. A network error never falls back to fake data.
 
 ## Put it on the web (step by step: **docs/GO-LIVE-CHECKLIST.md**)
+Start on the free temporary `workers.dev` address (hidden from search engines); move to `pinboard.tcqindia.com` later with **docs/MOVE-TO-TCQ-DOMAIN.md**.
 1. **Neon**: create a free project, copy its connection string.
 2. **Cloudflare**: copy your Account ID, create an API token (template *Edit Cloudflare Workers*).
 3. **Resend**: verify `tcqindia.com`, create an API key.
@@ -63,7 +64,7 @@ Cloudflare Workers Free: 100,000 requests/day, 10 ms CPU/request, 5 cron trigger
 cd web && npm ci && npm run lint && npm run typecheck && npm run build
 cd ../api && npm ci && npm run typecheck
 sudo bash db/tests/run_local.sh          # needs postgresql-16: schema + 72 database checks + seed/100-cap test
-sudo bash api/test/run.sh                # 23 API tests on a real Postgres (fake Resend)
+sudo bash api/test/run.sh                # 24 API tests on a real Postgres (fake Resend)
 cd e2e && npm ci && python3 make-fixtures.py
 npx playwright test                                         # demo mode, phone + desktop
 npx playwright test -c playwright.fullstack.config.ts       # real API + Postgres (run per --project)

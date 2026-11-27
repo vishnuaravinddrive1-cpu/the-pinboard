@@ -295,7 +295,13 @@ export function createApp(d: Deps, extend?: (app: Hono<Vars>) => void) {
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404))
 
   // Anything else: the website (single-page app with fallback to index.html).
-  app.all('*', (c) => (d.assets ? d.assets.fetch(c.req.raw) : c.notFound()))
+  app.all('*', async (c) => {
+    if (!d.assets) return c.notFound()
+    const res = await d.assets.fetch(c.req.raw)
+    // The temporary *.workers.dev address must not be indexed by search engines; the real domain can be.
+    if (!new URL(c.req.url).hostname.endsWith('.workers.dev')) return res
+    const out = new Response(res.body, res); out.headers.set('X-Robots-Tag', 'noindex, nofollow'); return out
+  })
   return app
 }
 export { sign }
