@@ -17,3 +17,6 @@ $P -f "$HERE/../seed/seed.sql"
 $P -c "select seed_filler(90)"
 $P -At -c "select 'seed check: live=' || count(*) filter (where status='live') || ' waiting=' || count(*) filter (where status='waiting') from posters where organiser_email='demo-organiser@example.com'"
 $P -At -c "select 'public view rows=' || count(*) from public_posters"
+# Removing the sample data again must leave nothing behind
+$P -c "select seed_remove()"
+$P -At -c "select 'after seed_remove: demo posters=' || (select count(*) from posters where organiser_email='demo-organiser@example.com') || ' demo users=' || (select count(*) from users where email='demo-organiser@example.com') || ' seed images=' || (select count(*) from image_blobs where key like 'seed/%')"

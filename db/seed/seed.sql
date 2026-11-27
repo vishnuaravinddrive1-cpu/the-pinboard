@@ -35,6 +35,7 @@ end $$;
 create or replace function seed_remove() returns void language sql security definer set search_path = public as $$
   delete from posters where organiser_email = 'demo-organiser@example.com';
   delete from users where email = 'demo-organiser@example.com';
+  delete from image_blobs where key like 'seed/%';
 $$;
 revoke all on function seed_filler(int), seed_remove() from public, anon, authenticated;
 -- Test the cap:  select seed_filler(90);   (20 + 90 = 110: 100 live, 10 waiting)
